@@ -8,11 +8,16 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import sqlite3
 from contextlib import contextmanager
+from openai import OpenAI
+from config import oai_key
 
 app = FastAPI(title="RAG MCP Server")
 
 # Database path
 DB_PATH = "rag_database.db"
+
+# Initialize OpenAI client
+openai_client = OpenAI(api_key=oai_key)
 
 # Pydantic models for MCP protocol
 class Tool(BaseModel):
@@ -45,13 +50,24 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 def fake_embedding(text: str, dim: int = 384) -> List[float]:
-    """Generate a fake but consistent embedding for text"""
+    """Generate a fake but consistent embedding for text (for backward compatibility)"""
     # Use hash to make it deterministic
     np.random.seed(hash(text) % (2**32))
     embedding = np.random.randn(dim)
     # Normalize
     embedding = embedding / np.linalg.norm(embedding)
     return embedding.tolist()
+
+def create_real_embedding(text: str) -> List[float]:
+    """Create embedding using OpenAI's text-embedding-3-small model"""
+    try:
+        response = openai_client.embeddings.create(
+            input=text,
+            model="text-embedding-3-small"
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        raise Exception(f"Error creating embedding: {str(e)}")
 
 @app.get("/")
 async def root():
@@ -109,8 +125,12 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
             isError=True
         )
     
-    # Generate embedding for query
-    query_embedding = fake_embedding(query)
+    # Generate embedding for query using OpenAI
+    try:
+        query_embedding = create_real_embedding(query)
+    except Exception as e:
+        # Fallback to fake embeddings if OpenAI fails
+        query_embedding = fake_embedding(query)
     
     # Search database
     with get_db() as conn:

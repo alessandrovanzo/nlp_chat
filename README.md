@@ -45,13 +45,27 @@ chainlit run app.py
 ```
 This will start the chatbot interface on `http://localhost:8000`
 
+### PDF Upload Interface (Optional)
+
+To upload PDFs to your knowledge base:
+
+**Terminal 3: Start PDF Upload App**
+```bash
+./start_pdf_upload.sh
+```
+This will start the PDF upload interface on `http://localhost:8002`
+
+See [SETUP_PDF_UPLOAD.md](SETUP_PDF_UPLOAD.md) for detailed instructions on uploading PDFs.
+
 ## Features
 
 - 🤖 **Real-time streaming responses** from GPT-4 Turbo
 - 🔍 **Semantic search** using vector embeddings
 - 📚 **RAG (Retrieval Augmented Generation)** - AI searches knowledge base automatically
+- 📄 **PDF Upload** - Upload PDFs with custom chunking and metadata
+- 🧠 **OpenAI Embeddings** - Real embeddings using text-embedding-3-small
 - 🛠️ **MCP Protocol** - Standard protocol for tool integration
-- 💾 **SQLite vector database** with fake embeddings
+- 💾 **SQLite vector database** for document storage
 - 🎯 **Function calling** - AI decides when to search the knowledge base
 - 💬 **Conversation history** - Maintains context across messages
 
@@ -78,6 +92,21 @@ The database comes pre-populated with 10 sample documents covering:
 - Embeddings and Semantic Search
 - Async Programming
 - RAG (Retrieval Augmented Generation)
+
+### Adding Your Own Documents
+
+You can add your own PDF documents using the PDF upload interface:
+
+1. Start the PDF upload app: `./start_pdf_upload.sh`
+2. Open `http://localhost:8002` in your browser
+3. Click the attachment button (📎) and select a PDF
+4. Provide metadata:
+   - **Source Name**: Title for the document
+   - **Description**: Brief description of content
+   - **Pages per Chunk**: Number of pages to group (1-10, default: 3)
+5. The PDF will be processed, embedded with OpenAI, and added to the knowledge base
+
+For more details, see [SETUP_PDF_UPLOAD.md](SETUP_PDF_UPLOAD.md)
 
 ## API Endpoints
 
