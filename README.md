@@ -45,17 +45,15 @@ chainlit run app.py
 ```
 This will start the chatbot interface on `http://localhost:8000`
 
-### PDF Upload Interface (Optional)
+### PDF Upload Interface
 
-To upload PDFs to your knowledge base:
+To upload PDFs to your knowledge base, just visit the upload page (MCP server must be running):
 
-**Terminal 3: Start PDF Upload App**
-```bash
-./start_pdf_upload.sh
-```
-This will start the PDF upload interface on `http://localhost:8002`
+**Upload Page:** http://localhost:8001/upload
 
-See [SETUP_PDF_UPLOAD.md](SETUP_PDF_UPLOAD.md) for detailed instructions on uploading PDFs.
+No additional terminal needed! The upload page is served by the MCP server.
+
+See [PDF_UPLOAD_INSTRUCTIONS.md](PDF_UPLOAD_INSTRUCTIONS.md) for detailed instructions.
 
 ## Features
 
@@ -95,23 +93,25 @@ The database comes pre-populated with 10 sample documents covering:
 
 ### Adding Your Own Documents
 
-You can add your own PDF documents using the PDF upload interface:
+You can add your own PDF documents using the web upload interface:
 
-1. Start the PDF upload app: `./start_pdf_upload.sh`
-2. Open `http://localhost:8002` in your browser
-3. Click the attachment button (📎) and select a PDF
-4. Provide metadata:
+1. Make sure MCP server is running: `python start_mcp_server.py`
+2. Open http://localhost:8001/upload in your browser
+3. Upload your PDF and fill in the form:
    - **Source Name**: Title for the document
    - **Description**: Brief description of content
-   - **Pages per Chunk**: Number of pages to group (1-10, default: 3)
+   - **Pages per Chunk**: Use slider (1-10, default: 3)
+4. Click "Upload & Process PDF"
 5. The PDF will be processed, embedded with OpenAI, and added to the knowledge base
 
-For more details, see [SETUP_PDF_UPLOAD.md](SETUP_PDF_UPLOAD.md)
+For more details, see [PDF_UPLOAD_INSTRUCTIONS.md](PDF_UPLOAD_INSTRUCTIONS.md)
 
 ## API Endpoints
 
 ### MCP Server (Port 8001)
 - `GET /` - Health check
+- `GET /upload` - PDF upload web interface
+- `POST /upload-pdf` - Upload and process PDF
 - `GET /mcp/tools` - List available tools
 - `POST /mcp/tools/call` - Execute a tool
 - `POST /initialize` - Re-initialize database with sample data

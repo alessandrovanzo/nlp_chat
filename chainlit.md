@@ -1,14 +1,27 @@
-# Welcome to Chainlit! 🚀🤖
+# Welcome to RAG Chat! 🤖📚
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+Hi there! 👋 I'm your AI assistant with access to a knowledge base. I can search for information and answer your questions using RAG (Retrieval Augmented Generation).
 
-## Useful Links 🔗
+## 📄 Upload PDFs
 
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
+Want to add your own documents to the knowledge base?
 
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
+**[➡️ Click here to upload PDFs](http://localhost:8001/upload)**
 
-## Welcome screen
+Upload your PDF documents with custom chunking and metadata. They'll be embedded using OpenAI and immediately searchable!
 
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+## 💬 How to Use
+
+Just ask me questions! I'll automatically search the knowledge base when needed and provide informed answers with sources.
+
+**Try asking:**
+- "What documents do you have?"
+- "Tell me about [topic from your PDFs]"
+- "Search for [keyword]"
+
+## 🔗 Quick Links
+
+- **📤 Upload PDFs:** [http://localhost:8001/upload](http://localhost:8001/upload)
+- **🔧 MCP Server:** [http://localhost:8001](http://localhost:8001)
+
+Happy chatting! 💬✨

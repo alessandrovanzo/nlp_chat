@@ -4,12 +4,16 @@ FastAPI MCP Server with RAG functionality
 import json
 import numpy as np
 from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import sqlite3
 from contextlib import contextmanager
 from openai import OpenAI
 from config import oai_key
+import tempfile
+import os
 
 app = FastAPI(title="RAG MCP Server")
 
@@ -73,6 +77,19 @@ def create_real_embedding(text: str) -> List[float]:
 async def root():
     """Health check endpoint"""
     return {"status": "ok", "service": "RAG MCP Server"}
+
+@app.get("/upload", response_class=HTMLResponse)
+async def upload_page():
+    """Serve the PDF upload page"""
+    try:
+        with open("upload_form.html", "r") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        return HTMLResponse(
+            content="<h1>Error: upload_form.html not found</h1>",
+            status_code=500
+        )
 
 @app.get("/mcp/tools")
 async def list_tools():
@@ -179,6 +196,42 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
         return ToolCallResponse(
             content=[{"type": "text", "text": response_text}],
             isError=False
+        )
+
+@app.post("/upload-pdf")
+async def upload_pdf(
+    pdf_file: UploadFile = File(...),
+    source_name: str = Form(...),
+    description: str = Form(...),
+    pages_per_chunk: int = Form(3)
+):
+    """Handle PDF upload and processing"""
+    try:
+        # Save uploaded file to temporary location
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            content = await pdf_file.read()
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+        
+        # Process the PDF using pdf_processor
+        from pdf_processor import process_pdf
+        
+        result = process_pdf(
+            pdf_file_path=tmp_file_path,
+            source_name=source_name,
+            description=description,
+            pages_per_chunk=pages_per_chunk
+        )
+        
+        # Clean up temporary file
+        os.unlink(tmp_file_path)
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        return JSONResponse(
+            content={"success": False, "error": str(e)},
+            status_code=500
         )
 
 @app.post("/initialize")
