@@ -1,19 +1,42 @@
 """
-PDF Processing Module
-Handles PDF extraction, chunking, and embedding generation
+Document Processing Module
+Handles PDF and EPUB extraction, chunking, and embedding generation
 """
 import PyPDF2
+import ebooklib
+from ebooklib import epub
+from bs4 import BeautifulSoup
 from typing import List, Dict, Any
 from openai import OpenAI
 from config import oai_key
 import json
 import sqlite3
+import os
 
 # Initialize OpenAI client
 client = OpenAI(api_key=oai_key)
 
 # Database path
 DB_PATH = "rag_database.db"
+
+
+def get_file_type(file_path: str) -> str:
+    """
+    Determine file type from extension
+    
+    Args:
+        file_path: Path to the file
+        
+    Returns:
+        File type ('pdf', 'epub', or 'unsupported')
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == '.pdf':
+        return 'pdf'
+    elif ext == '.epub':
+        return 'epub'
+    else:
+        return 'unsupported'
 
 
 def extract_text_from_pdf(pdf_file_path: str) -> List[str]:
@@ -25,6 +48,9 @@ def extract_text_from_pdf(pdf_file_path: str) -> List[str]:
         
     Returns:
         List of strings, one per page
+        
+    Raises:
+        Exception: If file is corrupted or cannot be read
     """
     pages_text = []
     
@@ -32,24 +58,71 @@ def extract_text_from_pdf(pdf_file_path: str) -> List[str]:
         with open(pdf_file_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
             
+            # Check if PDF is corrupted
+            if len(pdf_reader.pages) == 0:
+                raise Exception("PDF file is empty or corrupted")
+            
             for page_num in range(len(pdf_reader.pages)):
                 page = pdf_reader.pages[page_num]
                 text = page.extract_text()
                 pages_text.append(text)
                 
+    except PyPDF2.errors.PdfReadError as e:
+        raise Exception(f"Corrupted or invalid PDF file: {str(e)}")
     except Exception as e:
         raise Exception(f"Error reading PDF: {str(e)}")
     
     return pages_text
 
 
-def chunk_pages(pages: List[str], pages_per_chunk: int = 3) -> List[Dict[str, Any]]:
+def extract_text_from_epub(epub_file_path: str) -> List[str]:
     """
-    Chunk pages into groups of N pages
+    Extract text from EPUB, returning a list where each element is a chapter's text
     
     Args:
-        pages: List of page texts
-        pages_per_chunk: Number of pages per chunk
+        epub_file_path: Path to the EPUB file
+        
+    Returns:
+        List of strings, one per chapter
+        
+    Raises:
+        Exception: If file is corrupted or cannot be read
+    """
+    chapters_text = []
+    
+    try:
+        book = epub.read_epub(epub_file_path)
+        
+        # Get all document items (chapters)
+        items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
+        
+        if len(items) == 0:
+            raise Exception("EPUB file is empty or corrupted")
+        
+        for item in items:
+            # Parse HTML content
+            soup = BeautifulSoup(item.get_content(), 'html.parser')
+            # Extract text
+            text = soup.get_text(separator='\n', strip=True)
+            if text:  # Only add non-empty chapters
+                chapters_text.append(text)
+                
+    except ebooklib.epub.EpubException as e:
+        raise Exception(f"Corrupted or invalid EPUB file: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Error reading EPUB: {str(e)}")
+    
+    return chapters_text
+
+
+def chunk_pages(pages: List[str], pages_per_chunk: int = 3, unit_name: str = "page") -> List[Dict[str, Any]]:
+    """
+    Chunk pages/chapters into groups of N units
+    
+    Args:
+        pages: List of page/chapter texts
+        pages_per_chunk: Number of pages/chapters per chunk
+        unit_name: Name of the unit ('page' for PDFs, 'chapter' for EPUBs)
         
     Returns:
         List of chunks with metadata
@@ -64,7 +137,8 @@ def chunk_pages(pages: List[str], pages_per_chunk: int = 3) -> List[Dict[str, An
             "text": chunk_text,
             "start_page": i + 1,
             "end_page": min(i + pages_per_chunk, len(pages)),
-            "total_pages": len(pages)
+            "total_pages": len(pages),
+            "unit_name": unit_name
         }
         chunks.append(chunk)
     
@@ -96,7 +170,8 @@ def store_chunk_in_db(
     embedding: List[float],
     source_name: str,
     description: str,
-    chunk_metadata: Dict[str, Any]
+    chunk_metadata: Dict[str, Any],
+    source_type: str = "pdf"
 ) -> int:
     """
     Store a chunk with its embedding in the database
@@ -107,6 +182,7 @@ def store_chunk_in_db(
         source_name: Name of the source document
         description: Description of the source document
         chunk_metadata: Additional metadata (page numbers, etc.)
+        source_type: Type of source document ('pdf' or 'epub')
         
     Returns:
         The ID of the inserted document
@@ -118,7 +194,7 @@ def store_chunk_in_db(
     metadata = {
         "title": source_name,
         "description": description,
-        "source_type": "pdf",
+        "source_type": source_type,
         **chunk_metadata
     }
     
@@ -135,33 +211,44 @@ def store_chunk_in_db(
     return doc_id
 
 
-def process_pdf(
-    pdf_file_path: str,
+def process_document(
+    file_path: str,
     source_name: str,
     description: str,
     pages_per_chunk: int = 3
 ) -> Dict[str, Any]:
     """
-    Process a PDF file: extract text, chunk it, create embeddings, and store in database
+    Process a document file (PDF or EPUB): extract text, chunk it, create embeddings, and store in database
     
     Args:
-        pdf_file_path: Path to the PDF file
+        file_path: Path to the document file
         source_name: Name of the source document
         description: Description of the source document
-        pages_per_chunk: Number of pages per chunk
+        pages_per_chunk: Number of pages/chapters per chunk
         
     Returns:
         Summary of the processing
     """
     try:
-        # Extract text from PDF
-        pages = extract_text_from_pdf(pdf_file_path)
+        # Determine file type
+        file_type = get_file_type(file_path)
+        
+        if file_type == 'unsupported':
+            raise Exception(f"Unsupported file format. Please upload a PDF or EPUB file.")
+        
+        # Extract text based on file type
+        if file_type == 'pdf':
+            pages = extract_text_from_pdf(file_path)
+            unit_name = "page"
+        else:  # epub
+            pages = extract_text_from_epub(file_path)
+            unit_name = "chapter"
         
         if not pages:
-            raise Exception("No text extracted from PDF")
+            raise Exception(f"No text extracted from {file_type.upper()}")
         
-        # Chunk the pages
-        chunks = chunk_pages(pages, pages_per_chunk)
+        # Chunk the pages/chapters
+        chunks = chunk_pages(pages, pages_per_chunk, unit_name)
         
         # Process each chunk
         processed_chunks = []
@@ -182,8 +269,10 @@ def process_pdf(
                     "start_page": chunk['start_page'],
                     "end_page": chunk['end_page'],
                     "chunk_number": i + 1,
-                    "total_chunks": len(chunks)
-                }
+                    "total_chunks": len(chunks),
+                    "unit_name": unit_name
+                },
+                source_type=file_type
             )
             
             processed_chunks.append({
@@ -195,9 +284,11 @@ def process_pdf(
         return {
             "success": True,
             "source_name": source_name,
+            "file_type": file_type,
             "total_pages": len(pages),
             "total_chunks": len(chunks),
             "pages_per_chunk": pages_per_chunk,
+            "unit_name": unit_name,
             "processed_chunks": processed_chunks
         }
         
@@ -206,4 +297,17 @@ def process_pdf(
             "success": False,
             "error": str(e)
         }
+
+
+# Keep backward compatibility with old function name
+def process_pdf(
+    pdf_file_path: str,
+    source_name: str,
+    description: str,
+    pages_per_chunk: int = 3
+) -> Dict[str, Any]:
+    """
+    Legacy function - redirects to process_document
+    """
+    return process_document(pdf_file_path, source_name, description, pages_per_chunk)
 

@@ -8,4 +8,6 @@ numpy==1.26.3
 pydantic==2.5.3
 PyPDF2==3.0.1
 python-multipart==0.0.6
+ebooklib==0.18
+beautifulsoup4==4.12.3
 

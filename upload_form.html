@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Upload - Knowledge Base</title>
+    <title>Document Upload - Knowledge Base</title>
     <style>
         * {
             margin: 0;
@@ -244,16 +244,16 @@
 </head>
 <body>
     <div class="container">
-        <h1>📄 PDF Upload</h1>
-        <p class="subtitle">Add documents to your knowledge base</p>
+        <h1>Document Upload</h1>
+        <p class="subtitle">Add PDFs and EPUBs to your knowledge base</p>
         
         <form id="uploadForm">
             <div class="form-group">
-                <label for="pdfFile">PDF Document *</label>
+                <label for="pdfFile">Document (PDF or EPUB) *</label>
                 <div class="file-upload" id="fileUpload">
-                    <input type="file" id="pdfFile" name="pdfFile" accept=".pdf" required>
-                    <div class="file-icon">📎</div>
-                    <div class="file-text">Click to browse or drag & drop your PDF here</div>
+                    <input type="file" id="pdfFile" name="pdfFile" accept=".pdf,.epub" required>
+                    <div class="file-icon">📄</div>
+                    <div class="file-text">Click to browse or drag & drop your PDF or EPUB here</div>
                     <div class="file-name" id="fileName"></div>
                 </div>
             </div>
@@ -269,7 +269,7 @@
             </div>
             
             <div class="form-group">
-                <label for="pagesPerChunk">Pages per Chunk</label>
+                <label for="pagesPerChunk">Units per Chunk</label>
                 <div class="slider-container">
                     <input type="range" id="pagesPerChunk" name="pagesPerChunk" min="1" max="10" value="3">
                     <div class="slider-value">
@@ -280,7 +280,7 @@
                 </div>
             </div>
             
-            <button type="submit" id="submitBtn">Upload & Process PDF</button>
+            <button type="submit" id="submitBtn">Upload & Process Document</button>
         </form>
         
         <div class="progress" id="progress">
@@ -331,11 +331,15 @@
             
             if (e.dataTransfer.files.length > 0) {
                 const file = e.dataTransfer.files[0];
-                if (file.type === 'application/pdf') {
+                const validTypes = ['application/pdf', 'application/epub+zip'];
+                const validExtensions = ['.pdf', '.epub'];
+                const fileExt = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+                
+                if (validTypes.includes(file.type) || validExtensions.includes(fileExt)) {
                     fileInput.files = e.dataTransfer.files;
                     fileName.textContent = file.name;
                 } else {
-                    alert('Please upload a PDF file');
+                    alert('Please upload a PDF or EPUB file');
                 }
             }
         });
@@ -360,7 +364,7 @@
             progress.style.display = 'block';
             message.style.display = 'none';
             progressFill.style.width = '30%';
-            progressText.textContent = 'Uploading PDF...';
+            progressText.textContent = 'Uploading document...';
             
             try {
                 const response = await fetch('/upload-pdf', {
@@ -376,14 +380,17 @@
                 progressFill.style.width = '100%';
                 
                 if (result.success) {
+                    const fileType = result.file_type ? result.file_type.toUpperCase() : 'Document';
+                    const unitName = result.unit_name || 'pages';
+                    
                     message.className = 'message success';
                     message.innerHTML = `
-                        <strong>✅ Success!</strong> PDF processed successfully.
+                        <strong>Success!</strong> ${fileType} processed successfully.
                         <div class="result-details">
                             <strong>Document:</strong> ${result.source_name}<br>
-                            <strong>Total Pages:</strong> ${result.total_pages}<br>
+                            <strong>Total ${unitName.charAt(0).toUpperCase() + unitName.slice(1)}s:</strong> ${result.total_pages}<br>
                             <strong>Chunks Created:</strong> ${result.total_chunks}<br>
-                            <strong>Pages per Chunk:</strong> ${result.pages_per_chunk}
+                            <strong>${unitName.charAt(0).toUpperCase() + unitName.slice(1)}s per Chunk:</strong> ${result.pages_per_chunk}
                         </div>
                     `;
                     message.style.display = 'block';
@@ -397,7 +404,7 @@
                 }
             } catch (error) {
                 message.className = 'message error';
-                message.innerHTML = `<strong>❌ Error:</strong> ${error.message}`;
+                message.innerHTML = `<strong>Error:</strong> ${error.message}`;
                 message.style.display = 'block';
             } finally {
                 setTimeout(() => {
