@@ -346,6 +346,7 @@ def process_document(
         
         # Process each chunk (with automatic splitting if needed)
         processed_chunks = []
+        failed_chunks = []
         total_splits = 0
         
         for i, chunk in enumerate(chunks):
@@ -357,28 +358,39 @@ def process_document(
                 "unit_name": unit_name
             }
             
-            # Process chunk with automatic splitting if needed
-            doc_ids = process_chunk_with_splitting(
-                chunk_text=chunk['text'],
-                source_name=source_name,
-                description=description,
-                chunk_metadata=chunk_metadata,
-                source_type=file_type,
-                prepend_metadata=prepend_metadata
-            )
-            
-            # Track how many sub-chunks were created
-            if len(doc_ids) > 1:
-                total_splits += len(doc_ids) - 1
-            
-            # Add info about all created chunks
-            for idx, doc_id in enumerate(doc_ids):
-                suffix = f" (split {idx + 1}/{len(doc_ids)})" if len(doc_ids) > 1 else ""
-                processed_chunks.append({
-                    "doc_id": doc_id,
+            try:
+                # Process chunk with automatic splitting if needed
+                doc_ids = process_chunk_with_splitting(
+                    chunk_text=chunk['text'],
+                    source_name=source_name,
+                    description=description,
+                    chunk_metadata=chunk_metadata,
+                    source_type=file_type,
+                    prepend_metadata=prepend_metadata
+                )
+                
+                # Track how many sub-chunks were created
+                if len(doc_ids) > 1:
+                    total_splits += len(doc_ids) - 1
+                
+                # Add info about all created chunks
+                for idx, doc_id in enumerate(doc_ids):
+                    suffix = f" (split {idx + 1}/{len(doc_ids)})" if len(doc_ids) > 1 else ""
+                    processed_chunks.append({
+                        "doc_id": doc_id,
+                        "chunk_number": i + 1,
+                        "pages": f"{chunk['start_page']}-{chunk['end_page']}{suffix}"
+                    })
+            except Exception as e:
+                # Log failed chunk but continue processing
+                error_msg = str(e)
+                failed_chunks.append({
                     "chunk_number": i + 1,
-                    "pages": f"{chunk['start_page']}-{chunk['end_page']}{suffix}"
+                    "pages": f"{chunk['start_page']}-{chunk['end_page']}",
+                    "error": error_msg
                 })
+                print(f"Warning: Failed to process chunk {i + 1} ({chunk['start_page']}-{chunk['end_page']}): {error_msg}")
+                continue
         
         result = {
             "success": True,
@@ -388,12 +400,21 @@ def process_document(
             "total_chunks": len(chunks),
             "pages_per_chunk": pages_per_chunk,
             "unit_name": unit_name,
-            "processed_chunks": processed_chunks
+            "processed_chunks": processed_chunks,
+            "successful_chunks": len(processed_chunks),
+            "failed_chunks": failed_chunks,
+            "failed_count": len(failed_chunks)
         }
         
-        # Add note about splits if any occurred
+        # Add notes about splits and failures
+        notes = []
         if total_splits > 0:
-            result["note"] = f"{total_splits} chunk(s) were automatically split due to size"
+            notes.append(f"{total_splits} chunk(s) were automatically split due to size")
+        if len(failed_chunks) > 0:
+            notes.append(f"{len(failed_chunks)} chunk(s) failed to process and were skipped")
+        
+        if notes:
+            result["note"] = " | ".join(notes)
         
         return result
         

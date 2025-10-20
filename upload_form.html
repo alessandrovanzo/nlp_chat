@@ -564,12 +564,21 @@
                             <strong>Document:</strong> ${result.source_name}<br>
                             <strong>Total ${unitName.charAt(0).toUpperCase() + unitName.slice(1)}s:</strong> ${result.total_pages}<br>
                             <strong>Chunks Created:</strong> ${result.total_chunks}<br>
+                            <strong>Successful Chunks:</strong> ${result.successful_chunks || result.total_chunks}<br>
                             <strong>${unitName.charAt(0).toUpperCase() + unitName.slice(1)}s per Chunk:</strong> ${result.pages_per_chunk}
                     `;
                     
                     // Add note about splits if any
                     if (result.note) {
                         htmlContent += `<br><strong>Note:</strong> ${result.note}`;
+                    }
+                    
+                    // Add warning about failed chunks if any
+                    if (result.failed_chunks && result.failed_chunks.length > 0) {
+                        htmlContent += `<br><br><strong style="color: #ff9800;">⚠️ Failed Chunks:</strong>`;
+                        result.failed_chunks.forEach(fc => {
+                            htmlContent += `<br>• Chunk ${fc.chunk_number} (${unitName}s ${fc.pages}): ${fc.error}`;
+                        });
                     }
                     
                     htmlContent += '</div>';
