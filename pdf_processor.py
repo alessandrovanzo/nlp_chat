@@ -222,6 +222,7 @@ def process_chunk_with_splitting(
     description: str,
     chunk_metadata: Dict[str, Any],
     source_type: str,
+    prepend_metadata: bool = True,
     max_depth: int = 3
 ) -> List[int]:
     """
@@ -233,6 +234,7 @@ def process_chunk_with_splitting(
         description: Description of the source document
         chunk_metadata: Metadata for the chunk
         source_type: Type of source document
+        prepend_metadata: Whether to prepend metadata when creating embeddings
         max_depth: Maximum number of times to split (prevents infinite recursion)
         
     Returns:
@@ -241,8 +243,11 @@ def process_chunk_with_splitting(
     if max_depth <= 0:
         raise Exception("Chunk is too large even after multiple splits")
     
-    # Create the text to embed: source_name + description + chunk text
-    text_to_embed = f"{source_name}\n{description}\n\n{chunk_text}"
+    # Create the text to embed: optionally prepend source_name + description
+    if prepend_metadata:
+        text_to_embed = f"{source_name}\n{description}\n\n{chunk_text}"
+    else:
+        text_to_embed = chunk_text
     
     try:
         # Try to create embedding
@@ -286,10 +291,10 @@ def process_chunk_with_splitting(
             # Recursively process both halves
             doc_ids = []
             doc_ids.extend(process_chunk_with_splitting(
-                first_half, source_name, description, first_metadata, source_type, max_depth - 1
+                first_half, source_name, description, first_metadata, source_type, prepend_metadata, max_depth - 1
             ))
             doc_ids.extend(process_chunk_with_splitting(
-                second_half, source_name, description, second_metadata, source_type, max_depth - 1
+                second_half, source_name, description, second_metadata, source_type, prepend_metadata, max_depth - 1
             ))
             
             return doc_ids
@@ -302,7 +307,8 @@ def process_document(
     file_path: str,
     source_name: str,
     description: str,
-    pages_per_chunk: int = 3
+    pages_per_chunk: int = 3,
+    prepend_metadata: bool = True
 ) -> Dict[str, Any]:
     """
     Process a document file (PDF or EPUB): extract text, chunk it, create embeddings, and store in database
@@ -312,6 +318,7 @@ def process_document(
         source_name: Name of the source document
         description: Description of the source document
         pages_per_chunk: Number of pages/chapters per chunk
+        prepend_metadata: Whether to prepend metadata (source name + description) when creating embeddings
         
     Returns:
         Summary of the processing
@@ -356,7 +363,8 @@ def process_document(
                 source_name=source_name,
                 description=description,
                 chunk_metadata=chunk_metadata,
-                source_type=file_type
+                source_type=file_type,
+                prepend_metadata=prepend_metadata
             )
             
             # Track how many sub-chunks were created

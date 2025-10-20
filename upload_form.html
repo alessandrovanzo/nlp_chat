@@ -270,6 +270,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 20px;
             transition: all 0.3s;
         }
         
@@ -280,6 +281,8 @@
         
         .source-info {
             flex: 1;
+            min-width: 0;
+            margin-right: 20px;
         }
         
         .source-title {
@@ -298,18 +301,22 @@
             font-size: 13px;
             color: #666;
             line-height: 1.5;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
         
         .source-actions {
             display: flex;
-            gap: 10px;
+            gap: 15px;
             align-items: center;
+            flex-shrink: 0;
         }
         
         .toggle-switch {
             position: relative;
             width: 50px;
             height: 26px;
+            flex-shrink: 0;
         }
         
         .toggle-switch input {
@@ -354,12 +361,20 @@
             background: #dc3545;
             color: white;
             border: none;
-            padding: 8px 15px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
+            padding: 6px 8px;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: normal;
             cursor: pointer;
             transition: all 0.3s;
+            white-space: nowrap;
+            flex-shrink: 0;
+            line-height: 1;
+            min-width: auto;
+            width: auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .delete-btn:hover {
@@ -418,6 +433,17 @@
                         <span>Longer chunks (more expensive)</span>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Prepend Metadata Toggle -->
+            <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <label class="toggle-switch" style="margin-bottom: 0;">
+                    <input type="checkbox" id="prependMetadata" name="prependMetadata" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+                <label for="prependMetadata" style="margin-bottom: 0; cursor: pointer; font-weight: 500;">
+                    Prepend metadata when embedding
+                </label>
             </div>
             
             <button type="submit" id="submitBtn">Upload & Process Document</button>
@@ -505,6 +531,7 @@
             formData.append('source_name', document.getElementById('sourceName').value);
             formData.append('description', document.getElementById('description').value);
             formData.append('pages_per_chunk', slider.value);
+            formData.append('prepend_metadata', document.getElementById('prependMetadata').checked);
             
             // Show progress
             submitBtn.disabled = true;

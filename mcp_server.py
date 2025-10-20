@@ -294,10 +294,11 @@ async def upload_pdf(
     pdf_file: UploadFile = File(...),
     source_name: str = Form(...),
     description: str = Form(...),
-    pages_per_chunk: int = Form(3)
+    pages_per_chunk: int = Form(3),
+    prepend_metadata: bool = Form(True)
 ):
     """Handle document upload and processing (PDF or EPUB)"""
-    logger.info(f"Received document upload: '{pdf_file.filename}' for '{source_name}' (pages_per_chunk={pages_per_chunk})")
+    logger.info(f"Received document upload: '{pdf_file.filename}' for '{source_name}' (pages_per_chunk={pages_per_chunk}, prepend_metadata={prepend_metadata})")
     
     try:
         # Validate file extension
@@ -330,7 +331,8 @@ async def upload_pdf(
             file_path=tmp_file_path,
             source_name=source_name,
             description=description,
-            pages_per_chunk=pages_per_chunk
+            pages_per_chunk=pages_per_chunk,
+            prepend_metadata=prepend_metadata
         )
         
         # Clean up temporary file
