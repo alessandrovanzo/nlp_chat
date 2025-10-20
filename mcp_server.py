@@ -184,7 +184,7 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
         logger.warning("Falling back to fake embeddings")
         query_embedding = fake_embedding(query)
     
-    # Search database
+    # Search database (only active documents)
     try:
         with get_db() as conn:
             cursor = conn.cursor()
@@ -198,7 +198,30 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
                     isError=False
                 )
             
-            logger.info(f"Retrieved {len(rows)} documents from database")
+            # Filter for active documents only
+            active_rows = []
+            for row in rows:
+                try:
+                    metadata = json.loads(row[3]) if row[3] else {}
+                    # If 'active' field doesn't exist, default to True (for backward compatibility)
+                    is_active = metadata.get('active', True)
+                    if is_active:
+                        active_rows.append(row)
+                except Exception as e:
+                    logger.error(f"Error checking active status for document {row[0]}: {str(e)}")
+                    # Include by default if there's an error parsing metadata
+                    active_rows.append(row)
+            
+            rows = active_rows
+            
+            if not rows:
+                logger.warning("No active documents found in database")
+                return ToolCallResponse(
+                    content=[{"type": "text", "text": "No active documents found in the knowledge base. Please activate some sources in the upload interface."}],
+                    isError=False
+                )
+            
+            logger.info(f"Retrieved {len(rows)} active documents from database")
             
             # Calculate similarities
             results = []
@@ -342,6 +365,152 @@ async def initialize_database():
         logger.error(f"Database initialization failed: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sources")
+async def list_sources():
+    """Get list of all unique sources with their status"""
+    logger.info("Request received: GET /sources - Listing all sources")
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Get all documents and group by source (title)
+            cursor.execute("""
+                SELECT 
+                    json_extract(metadata, '$.title') as title,
+                    json_extract(metadata, '$.description') as description,
+                    json_extract(metadata, '$.source_type') as source_type,
+                    COUNT(*) as chunk_count,
+                    MIN(id) as first_id,
+                    COALESCE(json_extract(metadata, '$.active'), 1) as active
+                FROM documents
+                GROUP BY title
+                ORDER BY MAX(created_at) DESC
+            """)
+            
+            sources = []
+            for row in cursor.fetchall():
+                sources.append({
+                    "title": row[0],
+                    "description": row[1],
+                    "source_type": row[2] or "unknown",
+                    "chunk_count": row[3],
+                    "active": bool(row[5])
+                })
+            
+            logger.info(f"Returning {len(sources)} sources")
+            return {"success": True, "sources": sources}
+    except Exception as e:
+        logger.error(f"Error listing sources: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            content={"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.post("/sources/toggle")
+async def toggle_source(request: dict):
+    """Toggle active status of a source"""
+    title = request.get("title")
+    active = request.get("active", True)
+    
+    if not title:
+        return JSONResponse(
+            content={"success": False, "error": "Title is required"},
+            status_code=400
+        )
+    
+    logger.info(f"Toggling source '{title}' to active={active}")
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Update all chunks with this title
+            cursor.execute("""
+                SELECT id, metadata FROM documents
+                WHERE json_extract(metadata, '$.title') = ?
+            """, (title,))
+            
+            rows = cursor.fetchall()
+            if not rows:
+                return JSONResponse(
+                    content={"success": False, "error": "Source not found"},
+                    status_code=404
+                )
+            
+            # Update each document's metadata to include active status
+            for row in rows:
+                doc_id = row[0]
+                metadata = json.loads(row[1])
+                metadata['active'] = active
+                
+                cursor.execute("""
+                    UPDATE documents
+                    SET metadata = ?
+                    WHERE id = ?
+                """, (json.dumps(metadata), doc_id))
+            
+            conn.commit()
+            logger.info(f"Updated {len(rows)} chunks for source '{title}'")
+            
+            return {"success": True, "updated_chunks": len(rows), "active": active}
+    except Exception as e:
+        logger.error(f"Error toggling source: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            content={"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.post("/sources/delete")
+async def delete_source(request: dict):
+    """Delete a source and all its chunks"""
+    title = request.get("title")
+    
+    if not title:
+        return JSONResponse(
+            content={"success": False, "error": "Title is required"},
+            status_code=400
+        )
+    
+    logger.info(f"Deleting source '{title}'")
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            # Count chunks before deletion
+            cursor.execute("""
+                SELECT COUNT(*) FROM documents
+                WHERE json_extract(metadata, '$.title') = ?
+            """, (title,))
+            
+            count = cursor.fetchone()[0]
+            
+            if count == 0:
+                return JSONResponse(
+                    content={"success": False, "error": "Source not found"},
+                    status_code=404
+                )
+            
+            # Delete all chunks with this title
+            cursor.execute("""
+                DELETE FROM documents
+                WHERE json_extract(metadata, '$.title') = ?
+            """, (title,))
+            
+            conn.commit()
+            logger.info(f"Deleted {count} chunks for source '{title}'")
+            
+            return {"success": True, "deleted_chunks": count}
+    except Exception as e:
+        logger.error(f"Error deleting source: {str(e)}")
+        logger.error(traceback.format_exc())
+        return JSONResponse(
+            content={"success": False, "error": str(e)},
+            status_code=500
+        )
 
 if __name__ == "__main__":
     import uvicorn

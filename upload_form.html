@@ -128,10 +128,13 @@
             background: #e0e0e0;
             outline: none;
             -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
         }
         
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
+            -moz-appearance: none;
             appearance: none;
             width: 20px;
             height: 20px;
@@ -240,6 +243,143 @@
             font-size: 13px;
             line-height: 1.6;
         }
+        
+        .sources-section {
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .sources-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .sources-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .source-item {
+            background: #fafafa;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+        
+        .source-item.inactive {
+            opacity: 0.6;
+            background: #f5f5f5;
+        }
+        
+        .source-info {
+            flex: 1;
+        }
+        
+        .source-title {
+            font-weight: 700;
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .source-title.inactive {
+            text-decoration: line-through;
+            color: #999;
+        }
+        
+        .source-meta {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+        }
+        
+        .source-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+        
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 26px;
+        }
+        
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #667eea;
+        }
+        
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+        
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .delete-btn:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+        
+        .no-sources {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .loading-sources {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -269,13 +409,13 @@
             </div>
             
             <div class="form-group">
-                <label for="pagesPerChunk">Units per Chunk</label>
+                <label for="pagesPerChunk">Pages per Chunk (approx.)</label>
                 <div class="slider-container">
                     <input type="range" id="pagesPerChunk" name="pagesPerChunk" min="1" max="10" value="3">
                     <div class="slider-value">
-                        <span>Smaller chunks (more precise)</span>
+                        <span>Shorter chunks (cheaper, limited context)</span>
                         <span class="slider-current" id="sliderValue">3</span>
-                        <span>Larger chunks (more context)</span>
+                        <span>Longer chunks (more expensive)</span>
                     </div>
                 </div>
             </div>
@@ -291,6 +431,13 @@
         </div>
         
         <div class="message" id="message"></div>
+        
+        <!-- Sources Management Section -->
+        <div class="sources-section">
+            <h2>📚 Manage Knowledge Base Sources</h2>
+            <div class="loading-sources" id="loadingSources">Loading sources...</div>
+            <div class="sources-list" id="sourcesList"></div>
+        </div>
     </div>
     
     <script>
@@ -384,15 +531,22 @@
                     const unitName = result.unit_name || 'pages';
                     
                     message.className = 'message success';
-                    message.innerHTML = `
+                    let htmlContent = `
                         <strong>Success!</strong> ${fileType} processed successfully.
                         <div class="result-details">
                             <strong>Document:</strong> ${result.source_name}<br>
                             <strong>Total ${unitName.charAt(0).toUpperCase() + unitName.slice(1)}s:</strong> ${result.total_pages}<br>
                             <strong>Chunks Created:</strong> ${result.total_chunks}<br>
                             <strong>${unitName.charAt(0).toUpperCase() + unitName.slice(1)}s per Chunk:</strong> ${result.pages_per_chunk}
-                        </div>
                     `;
+                    
+                    // Add note about splits if any
+                    if (result.note) {
+                        htmlContent += `<br><strong>Note:</strong> ${result.note}`;
+                    }
+                    
+                    htmlContent += '</div>';
+                    message.innerHTML = htmlContent;
                     message.style.display = 'block';
                     
                     // Reset form
@@ -413,6 +567,137 @@
                     submitBtn.disabled = false;
                 }, 1000);
             }
+        });
+        
+        // Sources Management
+        const loadingSources = document.getElementById('loadingSources');
+        const sourcesList = document.getElementById('sourcesList');
+        
+        async function loadSources() {
+            try {
+                loadingSources.style.display = 'block';
+                sourcesList.innerHTML = '';
+                
+                const response = await fetch('/sources');
+                const data = await response.json();
+                
+                loadingSources.style.display = 'none';
+                
+                if (data.success && data.sources.length > 0) {
+                    renderSources(data.sources);
+                } else {
+                    sourcesList.innerHTML = '<div class="no-sources">No sources yet. Upload your first document above!</div>';
+                }
+            } catch (error) {
+                loadingSources.style.display = 'none';
+                sourcesList.innerHTML = '<div class="no-sources" style="color: #dc3545;">Error loading sources: ' + error.message + '</div>';
+            }
+        }
+        
+        function renderSources(sources) {
+            sourcesList.innerHTML = '';
+            
+            sources.forEach(source => {
+                const sourceItem = document.createElement('div');
+                sourceItem.className = 'source-item' + (source.active ? '' : ' inactive');
+                
+                const sourceType = (source.source_type || 'unknown').toUpperCase();
+                
+                sourceItem.innerHTML = `
+                    <div class="source-info">
+                        <div class="source-title ${source.active ? '' : 'inactive'}">${source.title}</div>
+                        <div class="source-meta">
+                            <strong>Type:</strong> ${sourceType} | 
+                            <strong>Chunks:</strong> ${source.chunk_count} | 
+                            <strong>Status:</strong> ${source.active ? '✅ Active for MCP' : '⭕ Inactive'}
+                            <br>
+                            <strong>Description:</strong> ${source.description || 'No description'}
+                        </div>
+                    </div>
+                    <div class="source-actions">
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${source.active ? 'checked' : ''} 
+                                   onchange="toggleSource('${source.title.replace(/'/g, "\\'")}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <button class="delete-btn" onclick="deleteSource('${source.title.replace(/'/g, "\\'")}')">
+                            Delete
+                        </button>
+                    </div>
+                `;
+                
+                sourcesList.appendChild(sourceItem);
+            });
+        }
+        
+        async function toggleSource(title, active) {
+            try {
+                const response = await fetch('/sources/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title, active })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Reload sources to reflect changes
+                    await loadSources();
+                } else {
+                    alert('Error toggling source: ' + result.error);
+                    // Reload to revert the toggle
+                    await loadSources();
+                }
+            } catch (error) {
+                alert('Error toggling source: ' + error.message);
+                await loadSources();
+            }
+        }
+        
+        async function deleteSource(title) {
+            if (!confirm(`Are you sure you want to delete "${title}" and all its chunks from the database? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/sources/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ title })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`Successfully deleted "${title}" (${result.deleted_chunks} chunks removed)`);
+                    await loadSources();
+                } else {
+                    alert('Error deleting source: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error deleting source: ' + error.message);
+            }
+        }
+        
+        // Load sources when page loads
+        loadSources();
+        
+        // Also reload sources after successful upload
+        const originalFormSubmit = form.onsubmit;
+        form.addEventListener('submit', async (e) => {
+            // Let the original handler run first
+            const result = await originalFormSubmit?.call(form, e);
+            
+            // After upload completes successfully, reload sources
+            setTimeout(() => {
+                if (message.classList.contains('success')) {
+                    loadSources();
+                }
+            }, 1500);
         });
     </script>
 </body>

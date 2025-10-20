@@ -167,9 +167,14 @@ async def process_and_store_pdf():
 **Total {result_unit_name.capitalize()}**: {result['total_pages']}
 **Total Chunks Created**: {result['total_chunks']}
 **{result_unit_name.capitalize()} per Chunk**: {result['pages_per_chunk']}
-
-**Chunks Details**:
 """
+        
+        # Add note about splits if any
+        if result.get('note'):
+            success_msg += f"\n⚠️ **Note**: {result['note']}\n"
+        
+        success_msg += "\n**Chunks Details**:\n"
+        
         for chunk_info in result['processed_chunks']:
             success_msg += f"\n- Chunk {chunk_info['chunk_number']}: {result_unit_name.capitalize()} {chunk_info['pages']} (DB ID: {chunk_info['doc_id']})"
         

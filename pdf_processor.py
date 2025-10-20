@@ -162,6 +162,11 @@ def create_embedding(text: str) -> List[float]:
         )
         return response.data[0].embedding
     except Exception as e:
+        # Check if it's a token limit error
+        error_str = str(e)
+        if "maximum context length" in error_str or "8192 tokens" in error_str:
+            # This will be caught by the caller to split the chunk
+            raise Exception(f"TOKEN_LIMIT_EXCEEDED: {error_str}")
         raise Exception(f"Error creating embedding: {str(e)}")
 
 
@@ -211,6 +216,88 @@ def store_chunk_in_db(
     return doc_id
 
 
+def process_chunk_with_splitting(
+    chunk_text: str,
+    source_name: str,
+    description: str,
+    chunk_metadata: Dict[str, Any],
+    source_type: str,
+    max_depth: int = 3
+) -> List[int]:
+    """
+    Process a chunk and split it if it's too large for embedding
+    
+    Args:
+        chunk_text: The chunk text to process
+        source_name: Name of the source document
+        description: Description of the source document
+        chunk_metadata: Metadata for the chunk
+        source_type: Type of source document
+        max_depth: Maximum number of times to split (prevents infinite recursion)
+        
+    Returns:
+        List of document IDs created
+    """
+    if max_depth <= 0:
+        raise Exception("Chunk is too large even after multiple splits")
+    
+    # Create the text to embed: source_name + description + chunk text
+    text_to_embed = f"{source_name}\n{description}\n\n{chunk_text}"
+    
+    try:
+        # Try to create embedding
+        embedding = create_embedding(text_to_embed)
+        
+        # Success! Store in database
+        doc_id = store_chunk_in_db(
+            chunk_text=chunk_text,
+            embedding=embedding,
+            source_name=source_name,
+            description=description,
+            chunk_metadata=chunk_metadata,
+            source_type=source_type
+        )
+        return [doc_id]
+        
+    except Exception as e:
+        # Check if it's a token limit error
+        if "TOKEN_LIMIT_EXCEEDED" in str(e):
+            # Split the chunk in half
+            mid_point = len(chunk_text) // 2
+            
+            # Find a good split point (prefer splitting at sentence or paragraph boundary)
+            split_point = mid_point
+            for delimiter in ['\n\n', '\n', '. ', ' ']:
+                pos = chunk_text.rfind(delimiter, mid_point - 500, mid_point + 500)
+                if pos != -1:
+                    split_point = pos + len(delimiter)
+                    break
+            
+            first_half = chunk_text[:split_point].strip()
+            second_half = chunk_text[split_point:].strip()
+            
+            # Create metadata for both halves
+            first_metadata = chunk_metadata.copy()
+            first_metadata["split_part"] = "1/2"
+            
+            second_metadata = chunk_metadata.copy()
+            second_metadata["split_part"] = "2/2"
+            
+            # Recursively process both halves
+            doc_ids = []
+            doc_ids.extend(process_chunk_with_splitting(
+                first_half, source_name, description, first_metadata, source_type, max_depth - 1
+            ))
+            doc_ids.extend(process_chunk_with_splitting(
+                second_half, source_name, description, second_metadata, source_type, max_depth - 1
+            ))
+            
+            return doc_ids
+        else:
+            # Different error, re-raise
+            raise
+
+
 def process_document(
     file_path: str,
     source_name: str,
@@ -250,38 +337,42 @@ def process_document(
         # Chunk the pages/chapters
         chunks = chunk_pages(pages, pages_per_chunk, unit_name)
         
-        # Process each chunk
+        # Process each chunk (with automatic splitting if needed)
         processed_chunks = []
+        total_splits = 0
+        
         for i, chunk in enumerate(chunks):
-            # Create the text to embed: source_name + description + chunk text
-            text_to_embed = f"{source_name}\n{description}\n\n{chunk['text']}"
+            chunk_metadata = {
+                "start_page": chunk['start_page'],
+                "end_page": chunk['end_page'],
+                "chunk_number": i + 1,
+                "total_chunks": len(chunks),
+                "unit_name": unit_name
+            }
             
-            # Create embedding
-            embedding = create_embedding(text_to_embed)
-            
-            # Store in database
-            doc_id = store_chunk_in_db(
+            # Process chunk with automatic splitting if needed
+            doc_ids = process_chunk_with_splitting(
                 chunk_text=chunk['text'],
-                embedding=embedding,
                 source_name=source_name,
                 description=description,
-                chunk_metadata={
-                    "start_page": chunk['start_page'],
-                    "end_page": chunk['end_page'],
-                    "chunk_number": i + 1,
-                    "total_chunks": len(chunks),
-                    "unit_name": unit_name
-                },
+                chunk_metadata=chunk_metadata,
                 source_type=file_type
             )
             
-            processed_chunks.append({
-                "doc_id": doc_id,
-                "chunk_number": i + 1,
-                "pages": f"{chunk['start_page']}-{chunk['end_page']}"
-            })
+            # Track how many sub-chunks were created
+            if len(doc_ids) > 1:
+                total_splits += len(doc_ids) - 1
+            
+            # Add info about all created chunks
+            for idx, doc_id in enumerate(doc_ids):
+                suffix = f" (split {idx + 1}/{len(doc_ids)})" if len(doc_ids) > 1 else ""
+                processed_chunks.append({
+                    "doc_id": doc_id,
+                    "chunk_number": i + 1,
+                    "pages": f"{chunk['start_page']}-{chunk['end_page']}{suffix}"
+                })
         
-        return {
+        result = {
             "success": True,
             "source_name": source_name,
             "file_type": file_type,
@@ -291,6 +382,12 @@ def process_document(
             "unit_name": unit_name,
             "processed_chunks": processed_chunks
         }
+        
+        # Add note about splits if any occurred
+        if total_splits > 0:
+            result["note"] = f"{total_splits} chunk(s) were automatically split due to size"
+        
+        return result
         
     except Exception as e:
         return {
