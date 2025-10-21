@@ -297,7 +297,7 @@ async def upload_pdf(
     pages_per_chunk: int = Form(3),
     prepend_metadata: bool = Form(True)
 ):
-    """Handle document upload and processing (PDF or EPUB)"""
+    """Handle document upload and processing (PDF, EPUB, or TXT)"""
     logger.info(f"Received document upload: '{pdf_file.filename}' for '{source_name}' (pages_per_chunk={pages_per_chunk}, prepend_metadata={prepend_metadata})")
     
     try:
@@ -309,10 +309,13 @@ async def upload_pdf(
         elif filename.endswith('.epub'):
             suffix = '.epub'
             file_type = 'EPUB'
+        elif filename.endswith('.txt'):
+            suffix = '.txt'
+            file_type = 'TXT'
         else:
             logger.warning(f"Unsupported file type: {filename}")
             return JSONResponse(
-                content={"success": False, "error": "Unsupported file format. Please upload a PDF or EPUB file."},
+                content={"success": False, "error": "Unsupported file format. Please upload a PDF, EPUB, or TXT file."},
                 status_code=400
             )
         
