@@ -2,7 +2,6 @@
 Business logic for RAG mcp_server operations
 """
 import json
-import numpy as np
 import logging
 import traceback
 from typing import List, Dict, Any, Tuple
@@ -14,16 +13,10 @@ from src.database.operations import (
     toggle_document_active,
     delete_document
 )
+from src.database.mock_vector_engine import vector_search
 from src.document_processing.embeddings import create_embedding
 
 logger = logging.getLogger(__name__)
-
-
-def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    """Calculate cosine similarity between two vectors"""
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 
 def search_knowledge_base(query: str, top_k: int = 3) -> Tuple[bool, str, List[Dict[str, Any]]]:
@@ -65,56 +58,17 @@ def search_knowledge_base(query: str, top_k: int = 3) -> Tuple[bool, str, List[D
             
             logger.info(f"Retrieved {len(chunks_data)} chunks from active documents")
             
-            # Calculate similarities
-            results = []
-            for chunk_data in chunks_data:
-                try:
-                    # Build metadata dict
-                    metadata = {
-                        "title": chunk_data["title"],
-                        "description": chunk_data["description"],
-                        "source_type": chunk_data["source_type"],
-                        "start_page": chunk_data["start_page"],
-                        "end_page": chunk_data["end_page"],
-                        "chunk_number": chunk_data["chunk_number"],
-                        "total_chunks": chunk_data["total_chunks"],
-                        "unit_name": chunk_data["unit_name"],
-                        "document_id": chunk_data["document_id"]
-                    }
-                    
-                    embedding = chunk_data["embedding"]
-                    
-                    # Check embedding dimensions
-                    if len(embedding) != len(query_embedding):
-                        logger.error(
-                            f"Dimension mismatch for chunk {chunk_data['chunk_id']} ('{chunk_data['title']}'): "
-                            f"query={len(query_embedding)}, chunk={len(embedding)}"
-                        )
-                        continue
-                    
-                    similarity = cosine_similarity(query_embedding, embedding)
-                    results.append({
-                        "id": chunk_data["chunk_id"],
-                        "content": chunk_data["content"],
-                        "metadata": metadata,
-                        "similarity": similarity
-                    })
-                except Exception as e:
-                    logger.error(f"Error processing chunk {chunk_data['chunk_id']}: {str(e)}")
-                    continue
+            # Perform vector search
+            top_results = vector_search(query_embedding, chunks_data, top_k)
             
-            if not results:
+            if not top_results:
                 error_msg = "All documents had incompatible embeddings. Database may contain mixed embedding dimensions."
                 logger.error(error_msg)
                 return False, error_msg, []
             
-            # Sort by similarity and get top_k
-            results.sort(key=lambda x: x["similarity"], reverse=True)
-            top_results = results[:top_k]
-            
             logger.info(f"Returning top {len(top_results)} results with similarities: {[r['similarity'] for r in top_results]}")
             
-            return True, f"Found {len(top_results)} relevant document_processing(s)", top_results
+            return True, f"Found {len(top_results)} relevant document(s)", top_results
             
     except Exception as e:
         logger.error(f"Error in search_knowledge_base: {str(e)}")
@@ -313,52 +267,13 @@ def search_specific_documents(
             
             logger.info(f"Retrieved {len(filtered_chunks)} chunks from {len(document_ids)} specified document(s)")
             
-            # Calculate similarities
-            results = []
-            for chunk_data in filtered_chunks:
-                try:
-                    # Build metadata dict
-                    metadata = {
-                        "title": chunk_data["title"],
-                        "description": chunk_data["description"],
-                        "source_type": chunk_data["source_type"],
-                        "start_page": chunk_data["start_page"],
-                        "end_page": chunk_data["end_page"],
-                        "chunk_number": chunk_data["chunk_number"],
-                        "total_chunks": chunk_data["total_chunks"],
-                        "unit_name": chunk_data["unit_name"],
-                        "document_id": chunk_data["document_id"]
-                    }
-                    
-                    embedding = chunk_data["embedding"]
-                    
-                    # Check embedding dimensions
-                    if len(embedding) != len(query_embedding):
-                        logger.error(
-                            f"Dimension mismatch for chunk {chunk_data['chunk_id']} ('{chunk_data['title']}'): "
-                            f"query={len(query_embedding)}, chunk={len(embedding)}"
-                        )
-                        continue
-                    
-                    similarity = cosine_similarity(query_embedding, embedding)
-                    results.append({
-                        "id": chunk_data["chunk_id"],
-                        "content": chunk_data["content"],
-                        "metadata": metadata,
-                        "similarity": similarity
-                    })
-                except Exception as e:
-                    logger.error(f"Error processing chunk {chunk_data['chunk_id']}: {str(e)}")
-                    continue
+            # Perform vector search
+            top_results = vector_search(query_embedding, filtered_chunks, top_k)
             
-            if not results:
+            if not top_results:
                 error_msg = "All documents had incompatible embeddings. Database may contain mixed embedding dimensions."
                 logger.error(error_msg)
                 return False, error_msg, []
-            
-            # Sort by similarity and get top_k
-            results.sort(key=lambda x: x["similarity"], reverse=True)
-            top_results = results[:top_k]
             
             logger.info(f"Returning top {len(top_results)} results with similarities: {[r['similarity'] for r in top_results]}")
             
