@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build: .
+    container_name: nlp-mcp-server
+    ports:
+      - "8001:8001"
+    volumes:
+      # Persist database
+      - ./data:/app/data
+      # Mount source code for development (optional, remove in production)
+      - ./src:/app/src
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_SERVER_URL=http://mcp-server:8001
+    command: python scripts/start_server.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nlp-network
+
+  chat-interface:
+    build: .
+    container_name: nlp-chat-interface
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist chainlit files
+      - ./chainlit_files:/app/.files
+      # Mount source code for development (optional, remove in production)
+      - ./src:/app/src
+      - ./chainlit.md:/app/chainlit.md
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MCP_SERVER_URL=http://mcp-server:8001
+    command: python scripts/start_chat.py
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    networks:
+      - nlp-network
+
+networks:
+  nlp-network:
+    driver: bridge
+
