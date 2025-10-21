@@ -187,12 +187,15 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
     # Search database (only active documents)
     try:
         with get_db() as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, content, embedding, title, description, source_type, 
-                       start_page, end_page, chunk_number, total_chunks, unit_name, active
-                FROM documents 
-                WHERE active = 1
+                SELECT c.id, c.content, c.embedding, c.start_page, c.end_page, 
+                       c.chunk_number, c.unit_name,
+                       d.id, d.title, d.description, d.source_type, d.total_chunks
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE d.active = 1
             """)
             rows = cursor.fetchall()
             
@@ -203,24 +206,24 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
                     isError=False
                 )
             
-            logger.info(f"Retrieved {len(rows)} active documents from database")
+            logger.info(f"Retrieved {len(rows)} chunks from active documents")
             
             # Calculate similarities
             results = []
             for row in rows:
                 try:
-                    doc_id = row[0]
+                    chunk_id = row[0]
                     content = row[1]
                     embedding = json.loads(row[2])
-                    title = row[3]
-                    description = row[4]
-                    source_type = row[5]
-                    start_page = row[6]
-                    end_page = row[7]
-                    chunk_number = row[8]
-                    total_chunks = row[9]
-                    unit_name = row[10]
-                    active = row[11]
+                    start_page = row[3]
+                    end_page = row[4]
+                    chunk_number = row[5]
+                    unit_name = row[6]
+                    document_id = row[7]
+                    title = row[8]
+                    description = row[9]
+                    source_type = row[10]
+                    total_chunks = row[11]
                     
                     # Build metadata dict for compatibility
                     metadata = {
@@ -232,26 +235,26 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
                         "chunk_number": chunk_number,
                         "total_chunks": total_chunks,
                         "unit_name": unit_name,
-                        "active": active
+                        "document_id": document_id
                     }
                     
                     # Check embedding dimensions
                     if len(embedding) != len(query_embedding):
                         logger.error(
-                            f"Dimension mismatch for document {doc_id} ('{title}'): "
-                            f"query={len(query_embedding)}, doc={len(embedding)}"
+                            f"Dimension mismatch for chunk {chunk_id} ('{title}'): "
+                            f"query={len(query_embedding)}, chunk={len(embedding)}"
                         )
                         continue
                     
                     similarity = cosine_similarity(query_embedding, embedding)
                     results.append({
-                        "id": doc_id,
+                        "id": chunk_id,
                         "content": content,
                         "metadata": metadata,
                         "similarity": similarity
                     })
                 except Exception as e:
-                    logger.error(f"Error processing document {doc_id}: {str(e)}")
+                    logger.error(f"Error processing chunk {chunk_id}: {str(e)}")
                     continue
             
             if not results:
@@ -380,29 +383,31 @@ async def list_sources():
     logger.info("Request received: GET /sources - Listing all sources")
     try:
         with get_db() as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             
-            # Get all documents and group by source (title)
+            # Get all documents with their chunk counts
             cursor.execute("""
                 SELECT 
-                    title,
-                    description,
-                    source_type,
-                    COUNT(*) as chunk_count,
-                    MIN(id) as first_id,
-                    MAX(active) as active
-                FROM documents
-                GROUP BY title
-                ORDER BY MAX(created_at) DESC
+                    d.id,
+                    d.title,
+                    d.description,
+                    d.source_type,
+                    d.total_chunks,
+                    d.active,
+                    d.created_at
+                FROM documents d
+                ORDER BY d.created_at DESC
             """)
             
             sources = []
             for row in cursor.fetchall():
                 sources.append({
-                    "title": row[0],
-                    "description": row[1],
-                    "source_type": row[2] or "unknown",
-                    "chunk_count": row[3],
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "source_type": row[3] or "unknown",
+                    "chunk_count": row[4],
                     "active": bool(row[5])
                 })
             
@@ -418,7 +423,7 @@ async def list_sources():
 
 @app.post("/sources/toggle")
 async def toggle_source(request: dict):
-    """Toggle active status of a source"""
+    """Toggle active status of a source (document)"""
     title = request.get("title")
     active = request.get("active", True)
     
@@ -432,27 +437,32 @@ async def toggle_source(request: dict):
     
     try:
         with get_db() as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             
-            # Update all chunks with this title
+            # Get chunk count first
+            cursor.execute("SELECT total_chunks FROM documents WHERE title = ?", (title,))
+            result = cursor.fetchone()
+            
+            if not result:
+                return JSONResponse(
+                    content={"success": False, "error": "Source not found"},
+                    status_code=404
+                )
+            
+            chunk_count = result[0]
+            
+            # Update document active status
             cursor.execute("""
                 UPDATE documents
                 SET active = ?
                 WHERE title = ?
             """, (1 if active else 0, title))
             
-            updated_count = cursor.rowcount
-            
-            if updated_count == 0:
-                return JSONResponse(
-                    content={"success": False, "error": "Source not found"},
-                    status_code=404
-                )
-            
             conn.commit()
-            logger.info(f"Updated {updated_count} chunks for source '{title}'")
+            logger.info(f"Updated source '{title}' (affects {chunk_count} chunks)")
             
-            return {"success": True, "updated_chunks": updated_count, "active": active}
+            return {"success": True, "updated_chunks": chunk_count, "active": active}
     except Exception as e:
         logger.error(f"Error toggling source: {str(e)}")
         logger.error(traceback.format_exc())
@@ -463,7 +473,7 @@ async def toggle_source(request: dict):
 
 @app.post("/sources/delete")
 async def delete_source(request: dict):
-    """Delete a source and all its chunks"""
+    """Delete a source document and all its chunks (CASCADE)"""
     title = request.get("title")
     
     if not title:
@@ -476,32 +486,32 @@ async def delete_source(request: dict):
     
     try:
         with get_db() as conn:
+            conn.execute("PRAGMA foreign_keys = ON")  # Enable CASCADE DELETE
             cursor = conn.cursor()
             
-            # Count chunks before deletion
+            # Get chunk count before deletion
             cursor.execute("""
-                SELECT COUNT(*) FROM documents
+                SELECT id, total_chunks FROM documents
                 WHERE title = ?
             """, (title,))
             
-            count = cursor.fetchone()[0]
+            result = cursor.fetchone()
             
-            if count == 0:
+            if not result:
                 return JSONResponse(
                     content={"success": False, "error": "Source not found"},
                     status_code=404
                 )
             
-            # Delete all chunks with this title
-            cursor.execute("""
-                DELETE FROM documents
-                WHERE title = ?
-            """, (title,))
+            doc_id, chunk_count = result
+            
+            # Delete document (CASCADE will automatically delete all associated chunks)
+            cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
             
             conn.commit()
-            logger.info(f"Deleted {count} chunks for source '{title}'")
+            logger.info(f"Deleted document '{title}' and {chunk_count} chunks (CASCADE)")
             
-            return {"success": True, "deleted_chunks": count}
+            return {"success": True, "deleted_chunks": chunk_count}
     except Exception as e:
         logger.error(f"Error deleting source: {str(e)}")
         logger.error(traceback.format_exc())

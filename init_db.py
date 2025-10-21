@@ -70,69 +70,89 @@ SAMPLE_DOCS = [
 ]
 
 def initialize_db():
-    """Create and populate the SQLite database"""
+    """Create and populate the SQLite database with two-table schema"""
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
     cursor = conn.cursor()
     
-    # Drop existing table if it exists
+    # Drop existing tables if they exist
+    cursor.execute("DROP TABLE IF EXISTS chunks")
     cursor.execute("DROP TABLE IF EXISTS documents")
     
-    # Create documents table with new schema
+    # Create documents table (document-level info)
     cursor.execute("""
         CREATE TABLE documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            embedding TEXT NOT NULL,
-            title TEXT,
+            title TEXT NOT NULL,
             description TEXT,
             source_type TEXT,
-            start_page INTEGER,
-            end_page INTEGER,
-            chunk_number INTEGER,
-            total_chunks INTEGER,
-            unit_name TEXT,
+            total_chunks INTEGER DEFAULT 0,
             active BOOLEAN DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
-    # Create indexes
-    cursor.execute("CREATE INDEX idx_source_type ON documents(source_type)")
-    cursor.execute("CREATE INDEX idx_title ON documents(title)")
-    cursor.execute("CREATE INDEX idx_chunk_number ON documents(chunk_number)")
-    cursor.execute("CREATE INDEX idx_active ON documents(active)")
+    # Create chunks table (chunk-level info) with foreign key
+    cursor.execute("""
+        CREATE TABLE chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            embedding TEXT NOT NULL,
+            start_page INTEGER,
+            end_page INTEGER,
+            chunk_number INTEGER,
+            unit_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+        )
+    """)
     
-    # Insert sample documents
+    # Create indexes for performance
+    cursor.execute("CREATE INDEX idx_documents_title ON documents(title)")
+    cursor.execute("CREATE INDEX idx_documents_source_type ON documents(source_type)")
+    cursor.execute("CREATE INDEX idx_documents_active ON documents(active)")
+    cursor.execute("CREATE INDEX idx_chunks_document_id ON chunks(document_id)")
+    cursor.execute("CREATE INDEX idx_chunks_chunk_number ON chunks(chunk_number)")
+    
     print("Populating database with sample documents...")
+    
+    # Create a single sample document
+    cursor.execute(
+        """INSERT INTO documents (title, description, source_type, total_chunks, active)
+        VALUES (?, ?, ?, ?, ?)""",
+        ("Sample Knowledge Base", "Collection of sample documents about various technical topics", 
+         "sample", len(SAMPLE_DOCS), True)
+    )
+    document_id = cursor.lastrowid
+    
+    # Insert sample docs as chunks of the single document
     for i, doc in enumerate(SAMPLE_DOCS, 1):
         content = doc["content"]
         embedding = fake_embedding(content)
         
         cursor.execute(
-            """INSERT INTO documents 
-            (content, embedding, title, description, source_type, start_page, end_page, 
-             chunk_number, total_chunks, unit_name, active) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO chunks 
+            (document_id, content, embedding, start_page, end_page, chunk_number, unit_name) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
+                document_id,
                 content, 
                 json.dumps(embedding),
-                doc["title"],
-                f"Sample document about {doc['category']}",
-                "sample",
                 1,
                 1,
                 i,
-                len(SAMPLE_DOCS),
-                "document",
-                True
+                "section"
             )
         )
-        print(f"  ✓ Added: {doc['title']}")
+        print(f"  ✓ Added chunk {i}: {doc['title']}")
     
     conn.commit()
     conn.close()
     
-    print(f"\n✅ Database initialized successfully with {len(SAMPLE_DOCS)} documents!")
+    print(f"\n✅ Database initialized successfully!")
+    print(f"   - 1 document")
+    print(f"   - {len(SAMPLE_DOCS)} chunks")
     print(f"   Database location: {DB_PATH}")
 
 if __name__ == "__main__":

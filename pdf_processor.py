@@ -257,6 +257,46 @@ def create_embedding(text: str) -> List[float]:
         raise Exception(f"Error creating embedding: {str(e)}")
 
 
+def get_or_create_document(
+    conn: sqlite3.Connection,
+    source_name: str,
+    description: str,
+    source_type: str
+) -> int:
+    """
+    Get existing document or create a new one
+    
+    Args:
+        conn: Database connection
+        source_name: Name of the source document
+        description: Description of the source document
+        source_type: Type of source document ('pdf', 'epub', 'txt')
+        
+    Returns:
+        The ID of the document
+    """
+    cursor = conn.cursor()
+    
+    # Check if document already exists
+    cursor.execute(
+        "SELECT id FROM documents WHERE title = ? AND source_type = ?",
+        (source_name, source_type)
+    )
+    
+    result = cursor.fetchone()
+    if result:
+        return result[0]
+    
+    # Create new document
+    cursor.execute(
+        """INSERT INTO documents (title, description, source_type, total_chunks, active)
+        VALUES (?, ?, ?, 0, 1)""",
+        (source_name, description, source_type)
+    )
+    
+    return cursor.lastrowid
+
+
 def store_chunk_in_db(
     chunk_text: str,
     embedding: List[float],
@@ -277,37 +317,43 @@ def store_chunk_in_db(
         source_type: Type of source document ('pdf' or 'epub')
         
     Returns:
-        The ID of the inserted document
+        The ID of the inserted chunk
     """
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
     cursor = conn.cursor()
     
-    # Insert into database with separate columns
+    # Get or create the document
+    document_id = get_or_create_document(conn, source_name, description, source_type)
+    
+    # Insert chunk with foreign key reference
     cursor.execute(
-        """INSERT INTO documents 
-        (content, embedding, title, description, source_type, start_page, end_page, 
-         chunk_number, total_chunks, unit_name, active) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO chunks 
+        (document_id, content, embedding, start_page, end_page, chunk_number, unit_name) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
+            document_id,
             chunk_text, 
-            json.dumps(embedding), 
-            source_name,
-            description,
-            source_type,
+            json.dumps(embedding),
             chunk_metadata.get('start_page'),
             chunk_metadata.get('end_page'),
             chunk_metadata.get('chunk_number'),
-            chunk_metadata.get('total_chunks'),
-            chunk_metadata.get('unit_name'),
-            True  # active by default
+            chunk_metadata.get('unit_name')
         )
     )
     
-    doc_id = cursor.lastrowid
+    chunk_id = cursor.lastrowid
+    
+    # Update total_chunks count in document
+    cursor.execute(
+        "UPDATE documents SET total_chunks = (SELECT COUNT(*) FROM chunks WHERE document_id = ?) WHERE id = ?",
+        (document_id, document_id)
+    )
+    
     conn.commit()
     conn.close()
     
-    return doc_id
+    return chunk_id
 
 
 def process_chunk_with_splitting(
@@ -471,10 +517,10 @@ def process_document(
                     total_splits += len(doc_ids) - 1
                 
                 # Add info about all created chunks
-                for idx, doc_id in enumerate(doc_ids):
+                for idx, chunk_id in enumerate(doc_ids):
                     suffix = f" (split {idx + 1}/{len(doc_ids)})" if len(doc_ids) > 1 else ""
                     processed_chunks.append({
-                        "doc_id": doc_id,
+                        "chunk_id": chunk_id,
                         "chunk_number": i + 1,
                         "pages": f"{chunk['start_page']}-{chunk['end_page']}{suffix}"
                     })
@@ -533,4 +579,5 @@ def process_pdf(
     Legacy function - redirects to process_document
     """
     return process_document(pdf_file_path, source_name, description, pages_per_chunk)
+
 
