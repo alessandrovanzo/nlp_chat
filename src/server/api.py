@@ -13,7 +13,14 @@ import logging
 import traceback
 
 from src.config import OPENAI_API_KEY, DB_PATH
-from src.database.models import get_db, process_document
+from src.database.database import get_session
+from src.database.operations import (
+    get_active_chunks_with_documents,
+    get_all_documents,
+    toggle_document_active,
+    delete_document
+)
+from src.document.processor import process_document
 from src.document.embeddings import create_embedding
 from openai import OpenAI
 
@@ -166,74 +173,54 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
     
     # Search database (only active documents)
     try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT c.id, c.content, c.embedding, c.start_page, c.end_page, 
-                       c.chunk_number, c.unit_name,
-                       d.id, d.title, d.description, d.source_type, d.total_chunks
-                FROM chunks c
-                JOIN documents d ON c.document_id = d.id
-                WHERE d.active = 1
-            """)
-            rows = cursor.fetchall()
+        with get_session() as session:
+            chunks_data = get_active_chunks_with_documents(session)
             
-            if not rows:
+            if not chunks_data:
                 logger.warning("No active documents found in database")
                 return ToolCallResponse(
                     content=[{"type": "text", "text": "No active documents found in the knowledge base. Please activate some sources in the upload interface."}],
                     isError=False
                 )
             
-            logger.info(f"Retrieved {len(rows)} chunks from active documents")
+            logger.info(f"Retrieved {len(chunks_data)} chunks from active documents")
             
             # Calculate similarities
             results = []
-            for row in rows:
+            for chunk_data in chunks_data:
                 try:
-                    chunk_id = row[0]
-                    content = row[1]
-                    embedding = json.loads(row[2])
-                    start_page = row[3]
-                    end_page = row[4]
-                    chunk_number = row[5]
-                    unit_name = row[6]
-                    document_id = row[7]
-                    title = row[8]
-                    description = row[9]
-                    source_type = row[10]
-                    total_chunks = row[11]
-                    
                     # Build metadata dict for compatibility
                     metadata = {
-                        "title": title,
-                        "description": description,
-                        "source_type": source_type,
-                        "start_page": start_page,
-                        "end_page": end_page,
-                        "chunk_number": chunk_number,
-                        "total_chunks": total_chunks,
-                        "unit_name": unit_name,
-                        "document_id": document_id
+                        "title": chunk_data["title"],
+                        "description": chunk_data["description"],
+                        "source_type": chunk_data["source_type"],
+                        "start_page": chunk_data["start_page"],
+                        "end_page": chunk_data["end_page"],
+                        "chunk_number": chunk_data["chunk_number"],
+                        "total_chunks": chunk_data["total_chunks"],
+                        "unit_name": chunk_data["unit_name"],
+                        "document_id": chunk_data["document_id"]
                     }
+                    
+                    embedding = chunk_data["embedding"]
                     
                     # Check embedding dimensions
                     if len(embedding) != len(query_embedding):
                         logger.error(
-                            f"Dimension mismatch for chunk {chunk_id} ('{title}'): "
+                            f"Dimension mismatch for chunk {chunk_data['chunk_id']} ('{chunk_data['title']}'): "
                             f"query={len(query_embedding)}, chunk={len(embedding)}"
                         )
                         continue
                     
                     similarity = cosine_similarity(query_embedding, embedding)
                     results.append({
-                        "id": chunk_id,
-                        "content": content,
+                        "id": chunk_data["chunk_id"],
+                        "content": chunk_data["content"],
                         "metadata": metadata,
                         "similarity": similarity
                     })
                 except Exception as e:
-                    logger.error(f"Error processing chunk {chunk_id}: {str(e)}")
+                    logger.error(f"Error processing chunk {chunk_data['chunk_id']}: {str(e)}")
                     continue
             
             if not results:
@@ -346,32 +333,18 @@ async def list_sources():
     """Get list of all unique sources with their status"""
     logger.info("Request received: GET /sources - Listing all sources")
     try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            
-            # Get all documents with their chunk counts
-            cursor.execute("""
-                SELECT 
-                    d.id,
-                    d.title,
-                    d.description,
-                    d.source_type,
-                    d.total_chunks,
-                    d.active,
-                    d.created_at
-                FROM documents d
-                ORDER BY d.created_at DESC
-            """)
+        with get_session() as session:
+            documents = get_all_documents(session)
             
             sources = []
-            for row in cursor.fetchall():
+            for doc in documents:
                 sources.append({
-                    "id": row[0],
-                    "title": row[1],
-                    "description": row[2],
-                    "source_type": row[3] or "unknown",
-                    "chunk_count": row[4],
-                    "active": bool(row[5])
+                    "id": doc.id,
+                    "title": doc.title,
+                    "description": doc.description,
+                    "source_type": doc.source_type or "unknown",
+                    "chunk_count": doc.total_chunks,
+                    "active": bool(doc.active)
                 })
             
             logger.info(f"Returning {len(sources)} sources")
@@ -400,32 +373,19 @@ async def toggle_source(request: dict):
     logger.info(f"Toggling source '{title}' to active={active}")
     
     try:
-        with get_db() as conn:
-            cursor = conn.cursor()
+        with get_session() as session:
+            document = toggle_document_active(session, title, active)
             
-            # Get chunk count first
-            cursor.execute("SELECT total_chunks FROM documents WHERE title = ?", (title,))
-            result = cursor.fetchone()
-            
-            if not result:
+            if not document:
                 return JSONResponse(
                     content={"success": False, "error": "Source not found"},
                     status_code=404
                 )
             
-            chunk_count = result[0]
+            session.commit()
+            logger.info(f"Updated source '{title}' (affects {document.total_chunks} chunks)")
             
-            # Update document active status
-            cursor.execute("""
-                UPDATE documents
-                SET active = ?
-                WHERE title = ?
-            """, (1 if active else 0, title))
-            
-            conn.commit()
-            logger.info(f"Updated source '{title}' (affects {chunk_count} chunks)")
-            
-            return {"success": True, "updated_chunks": chunk_count, "active": active}
+            return {"success": True, "updated_chunks": document.total_chunks, "active": active}
     except Exception as e:
         logger.error(f"Error toggling source: {str(e)}")
         logger.error(traceback.format_exc())
@@ -449,29 +409,16 @@ async def delete_source(request: dict):
     logger.info(f"Deleting source '{title}'")
     
     try:
-        with get_db() as conn:
-            cursor = conn.cursor()
+        with get_session() as session:
+            chunk_count = delete_document(session, title)
             
-            # Get chunk count before deletion
-            cursor.execute("""
-                SELECT id, total_chunks FROM documents
-                WHERE title = ?
-            """, (title,))
-            
-            result = cursor.fetchone()
-            
-            if not result:
+            if chunk_count is None:
                 return JSONResponse(
                     content={"success": False, "error": "Source not found"},
                     status_code=404
                 )
             
-            doc_id, chunk_count = result
-            
-            # Delete document (CASCADE will automatically delete all associated chunks)
-            cursor.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
-            
-            conn.commit()
+            session.commit()
             logger.info(f"Deleted document '{title}' and {chunk_count} chunks (CASCADE)")
             
             return {"success": True, "deleted_chunks": chunk_count}
