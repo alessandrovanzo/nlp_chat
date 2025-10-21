@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Start the Chainlit chat interface
+Start the Chainlit chainlit_app interface
 """
 import subprocess
 import sys
@@ -18,7 +18,7 @@ def main():
     # Start Chainlit
     subprocess.run([
         sys.executable, "-m", "chainlit",
-        "run", "src/chat/app.py",
+        "run", "src/chainlit_app/app.py",
         "--port", "8000"
     ])
 

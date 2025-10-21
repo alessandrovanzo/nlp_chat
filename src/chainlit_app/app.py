@@ -1,5 +1,5 @@
 """
-Chainlit chat interface with RAG support
+Chainlit chainlit_app interface with RAG support
 """
 import chainlit as cl
 from openai import OpenAI
@@ -13,7 +13,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 
 @cl.on_chat_start
 async def start():
-    """Welcome message when chat starts"""
+    """Welcome message when chainlit_app starts"""
     cl.user_session.set("messages", [])
     await cl.Message(
         content="👋 Hello! I'm your AI assistant with access to a knowledge base. I can search for information to help answer your questions!"

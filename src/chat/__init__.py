@@ -1,2 +1,0 @@
-"""Chainlit chat interface"""
-

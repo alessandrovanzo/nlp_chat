@@ -120,7 +120,7 @@ It will be created automatically on first run.
 Kill existing processes:
 ```bash
 lsof -ti:8001 | xargs kill  # Kill mcp_server
-lsof -ti:8000 | xargs kill  # Kill chat
+lsof -ti:8000 | xargs kill  # Kill chainlit_app
 ```
 
 ## Additional Information
