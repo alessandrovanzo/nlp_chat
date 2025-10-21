@@ -32,7 +32,7 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 @app.on_event("startup")
 async def startup_event():
-    """Log server startup"""
+    """Log mcp_server startup"""
     logger.info("=" * 60)
     logger.info("RAG MCP Server starting up")
     logger.info(f"Database path: {DB_PATH}")

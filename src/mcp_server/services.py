@@ -1,5 +1,5 @@
 """
-Business logic for RAG server operations
+Business logic for RAG mcp_server operations
 """
 import json
 import numpy as np

@@ -119,7 +119,7 @@ It will be created automatically on first run.
 **Port already in use?**
 Kill existing processes:
 ```bash
-lsof -ti:8001 | xargs kill  # Kill server
+lsof -ti:8001 | xargs kill  # Kill mcp_server
 lsof -ti:8000 | xargs kill  # Kill chat
 ```
 
