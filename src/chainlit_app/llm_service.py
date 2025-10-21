@@ -20,22 +20,19 @@ You have THREE tools available:
 
 WHEN TO USE EACH TOOL:
 
-- Use get_available_sources FIRST when:
-  * Users ask about specific authors, books, or sources (e.g., "What does Taleb say about X?")
-  * You need to identify which documents to search
+- Use search_knowledge_base when:
+  * Users ask general questions without specifying sources
+  * You want to search across all documents
+
+- Use get_available_sources when:
   * Users want to know what's in the knowledge base
+  * You need to identify which documents to search in search_specific_documents
 
 - Use search_specific_documents when:
   * You've identified specific document IDs from get_available_sources
   * Users ask about content from specific sources
   * You want to search within a subset of documents
   * Example workflow: User asks "What does Taleb say about Stiglitz?" → Call get_available_sources → Find Taleb-related document IDs → Call search_specific_documents with those IDs and query "Stiglitz"
-
-- Use search_knowledge_base when:
-  * Users ask general questions without specifying sources
-  * You want to search across all documents
-
-IMPORTANT: Always search the knowledge base when users ask about technical topics, even if you think you know the answer. The knowledge base contains specific, curated information that should be used.
 
 After retrieving information, synthesize it into a helpful answer and cite your sources."""
 }
