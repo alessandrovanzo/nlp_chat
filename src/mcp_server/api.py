@@ -14,7 +14,7 @@ import traceback
 
 from src.config import OPENAI_API_KEY, DB_PATH
 from src.document.processor import process_document
-from src.server import services
+from src.mcp_server import services
 from openai import OpenAI
 
 # Configure logging
