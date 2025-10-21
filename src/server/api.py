@@ -315,7 +315,15 @@ async def upload_document(
         if result.get("success"):
             logger.info(f"Successfully processed {file_type}: {result.get('total_chunks')} chunks created")
         else:
-            logger.error(f"{file_type} processing failed: {result.get('error')}")
+            error_msg = result.get('error', '')
+            logger.error(f"{file_type} processing failed: {error_msg}")
+            
+            # Check if it's a duplicate title error
+            if "already exists" in error_msg:
+                return JSONResponse(
+                    content=result,
+                    status_code=409  # Conflict status code
+                )
         
         return JSONResponse(content=result)
         

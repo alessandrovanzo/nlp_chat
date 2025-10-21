@@ -14,7 +14,7 @@ from src.document.extractors import (
 from src.document.chunker import chunk_pages
 from src.database.database import get_session
 from src.database.operations import (
-    get_or_create_document,
+    create_document,
     create_chunk,
     update_document_chunk_count
 )
@@ -165,8 +165,8 @@ def process_document(
         
         # Use a single database session for all operations
         with get_session() as session:
-            # Get or create the document
-            document = get_or_create_document(
+            # Create the document (will raise ValueError if title exists)
+            document = create_document(
                 session=session,
                 title=source_name,
                 description=description,

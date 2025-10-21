@@ -9,33 +9,63 @@ from sqlalchemy import select
 from src.database.models import Document, Chunk
 
 
-def get_or_create_document(
+def get_document_by_id(session: Session, document_id: int) -> Optional[Document]:
+    """
+    Get a document by its ID
+    
+    Args:
+        session: Database session
+        document_id: ID of the document
+        
+    Returns:
+        The Document instance or None if not found
+    """
+    return session.get(Document, document_id)
+
+
+def get_document_by_title(session: Session, title: str) -> Optional[Document]:
+    """
+    Get a document by its title
+    
+    Args:
+        session: Database session
+        title: Title of the document
+        
+    Returns:
+        The Document instance or None if not found
+    """
+    stmt = select(Document).where(Document.title == title)
+    return session.execute(stmt).scalar_one_or_none()
+
+
+def create_document(
     session: Session,
     title: str,
     description: str,
     source_type: str
 ) -> Document:
     """
-    Get existing document or create a new one
+    Create a new document
     
     Args:
         session: Database session
-        title: Name of the source document
+        title: Name of the source document (must be unique)
         description: Description of the source document
         source_type: Type of source document ('pdf', 'epub', 'txt')
         
     Returns:
-        The Document instance
+        The created Document instance
+        
+    Raises:
+        ValueError: If a document with the same title already exists
     """
     # Check if document already exists
-    stmt = select(Document).where(
-        Document.title == title,
-        Document.source_type == source_type
-    )
-    document = session.execute(stmt).scalar_one_or_none()
-    
-    if document:
-        return document
+    existing = get_document_by_title(session, title)
+    if existing:
+        raise ValueError(
+            f"Document with title '{title}' already exists. "
+            f"Please use a different title or delete the existing document first."
+        )
     
     # Create new document
     document = Document(

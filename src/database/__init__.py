@@ -3,7 +3,9 @@
 from src.database.models import Base, Document, Chunk
 from src.database.database import get_session, get_engine
 from src.database.operations import (
-    get_or_create_document,
+    get_document_by_id,
+    get_document_by_title,
+    create_document,
     create_chunk,
     update_document_chunk_count,
     get_active_chunks_with_documents,
@@ -21,7 +23,9 @@ __all__ = [
     "get_session",
     "get_engine",
     # Operations
-    "get_or_create_document",
+    "get_document_by_id",
+    "get_document_by_title",
+    "create_document",
     "create_chunk",
     "update_document_chunk_count",
     "get_active_chunks_with_documents",
