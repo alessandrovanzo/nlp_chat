@@ -19,6 +19,7 @@ def main():
     subprocess.run([
         sys.executable, "-m", "chainlit",
         "run", "src/chainlit_app/app.py",
+        "--host", "0.0.0.0",
         "--port", "8000"
     ])
 
