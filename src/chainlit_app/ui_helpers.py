@@ -42,10 +42,13 @@ def create_source_elements(sources: list) -> list:
         title = source.get('metadata', {}).get('title', 'Untitled')
         similarity = source.get('similarity', 0)
         content = source.get('content', '')
+        chunk_number = source.get('metadata', {}).get('chunk_number')
         
         # Format content with metadata for better display
         formatted_content = f"Title: {title}\n"
         formatted_content += f"Relevance: {similarity:.2%}\n"
+        if chunk_number is not None:
+            formatted_content += f"Chunk: {chunk_number}\n"
         formatted_content += f"Document ID: {source.get('id', 'N/A')}\n\n"
         formatted_content += "="*50 + "\n\n"
         formatted_content += content
@@ -80,11 +83,18 @@ def format_sources_message(sources: list) -> str:
         title = source.get('metadata', {}).get('title', 'Untitled')
         similarity = source.get('similarity', 0)
         content = source.get('content', '')
+        chunk_number = source.get('metadata', {}).get('chunk_number')
         
         # Create preview
         preview = content[:100] + "..." if len(content) > 100 else content
         
-        sources_text += f"**Source {i}**: {title} (Relevance: {similarity:.0%})\n"
+        # Build source header with optional chunk info
+        source_header = f"**Source {i}**: {title}"
+        if chunk_number is not None:
+            source_header += f" (Chunk {chunk_number})"
+        source_header += f" — Relevance: {similarity:.0%}\n"
+        
+        sources_text += source_header
         sources_text += f"*Preview*: {preview}\n"
         sources_text += f"👉 *Click 'Source {i}: {title}' in the sidebar to view full text*\n\n"
     
