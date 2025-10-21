@@ -27,7 +27,7 @@ class Document(Base):
     # Relationship to chunks (with cascade delete)
     chunks: Mapped[List["Chunk"]] = relationship(
         "Chunk",
-        back_populates="document",
+        back_populates="document_processing",
         cascade="all, delete-orphan"
     )
     
@@ -42,7 +42,7 @@ class Document(Base):
 
 
 class Chunk(Base):
-    """Chunk model representing a text chunk from a document"""
+    """Chunk model representing a text chunk from a document_processing"""
     __tablename__ = "chunks"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -59,7 +59,7 @@ class Chunk(Base):
     unit_name: Mapped[str] = mapped_column(String, default="page")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
-    # Relationship to document
+    # Relationship to document_processing
     document: Mapped["Document"] = relationship("Document", back_populates="chunks")
     
     # Index

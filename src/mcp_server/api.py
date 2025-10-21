@@ -13,7 +13,7 @@ import logging
 import traceback
 
 from src.config import OPENAI_API_KEY, DB_PATH
-from src.document.processor import process_document
+from src.document_processing.processor import process_document
 from src.mcp_server import services
 from openai import OpenAI
 
@@ -65,7 +65,7 @@ async def root():
 
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page():
-    """Serve the document upload page"""
+    """Serve the document_processing upload page"""
     try:
         html_path = os.path.join(os.path.dirname(__file__), "document_upload_form", "upload.html")
         with open(html_path, "r") as f:
@@ -177,8 +177,8 @@ async def upload_document(
     pages_per_chunk: int = Form(3),
     prepend_metadata: bool = Form(True)
 ):
-    """Handle document upload and processing (PDF, EPUB, or TXT)"""
-    logger.info(f"Received document upload: '{pdf_file.filename}' for '{source_name}' (pages_per_chunk={pages_per_chunk}, prepend_metadata={prepend_metadata})")
+    """Handle document_processing upload and processing (PDF, EPUB, or TXT)"""
+    logger.info(f"Received document_processing upload: '{pdf_file.filename}' for '{source_name}' (pages_per_chunk={pages_per_chunk}, prepend_metadata={prepend_metadata})")
     
     try:
         # Validate file extension
@@ -207,7 +207,7 @@ async def upload_document(
         
         logger.info(f"Saved temporary {file_type} file: {tmp_file_path}")
         
-        # Process the document
+        # Process the document_processing
         result = process_document(
             file_path=tmp_file_path,
             source_name=source_name,
@@ -262,7 +262,7 @@ async def list_sources():
 
 @app.post("/sources/toggle")
 async def toggle_source(request: dict):
-    """Toggle active status of a source (document)"""
+    """Toggle active status of a source (document_processing)"""
     title = request.get("title")
     active = request.get("active", True)
     
@@ -288,7 +288,7 @@ async def toggle_source(request: dict):
 
 @app.post("/sources/delete")
 async def delete_source_route(request: dict):
-    """Delete a source document and all its chunks (CASCADE)"""
+    """Delete a source document_processing and all its chunks (CASCADE)"""
     title = request.get("title")
     
     logger.info(f"Request received: POST /sources/delete - title='{title}'")

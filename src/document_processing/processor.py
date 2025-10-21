@@ -4,14 +4,14 @@ Handles extraction, chunking, embedding, and storage
 """
 from typing import List, Dict, Any
 
-from src.document.embeddings import create_embedding
-from src.document.extractors import (
+from src.document_processing.embeddings import create_embedding
+from src.document_processing.extractors import (
     get_file_type,
     extract_text_from_pdf,
     extract_text_from_epub,
     extract_text_from_txt
 )
-from src.document.chunker import chunk_pages
+from src.document_processing.chunker import chunk_pages
 from src.database.database import get_session
 from src.database.operations import (
     create_document,
@@ -36,10 +36,10 @@ def process_chunk_with_splitting(
     Args:
         session: Database session
         chunk_text: The chunk text to process
-        document_id: ID of the parent document
+        document_id: ID of the parent document_processing
         chunk_metadata: Metadata for the chunk
-        source_name: Name of the source document (for prepending)
-        description: Description of the source document (for prepending)
+        source_name: Name of the source document_processing (for prepending)
+        description: Description of the source document_processing (for prepending)
         prepend_metadata: Whether to prepend metadata when creating embeddings
         max_depth: Maximum number of times to split (prevents infinite recursion)
         
@@ -122,12 +122,12 @@ def process_document(
     prepend_metadata: bool = True
 ) -> Dict[str, Any]:
     """
-    Process a document file (PDF, EPUB, or TXT): extract text, chunk it, create embeddings, and store in database
+    Process a document_processing file (PDF, EPUB, or TXT): extract text, chunk it, create embeddings, and store in database
     
     Args:
-        file_path: Path to the document file
-        source_name: Name of the source document
-        description: Description of the source document
+        file_path: Path to the document_processing file
+        source_name: Name of the source document_processing
+        description: Description of the source document_processing
         pages_per_chunk: Number of pages/chapters per chunk
         prepend_metadata: Whether to prepend metadata (source name + description) when creating embeddings
         
@@ -165,7 +165,7 @@ def process_document(
         
         # Use a single database session for all operations
         with get_session() as session:
-            # Create the document (will raise ValueError if title exists)
+            # Create the document_processing (will raise ValueError if title exists)
             document = create_document(
                 session=session,
                 title=source_name,
@@ -218,7 +218,7 @@ def process_document(
                     print(f"Warning: Failed to process chunk {i + 1} ({chunk['start_page']}-{chunk['end_page']}): {error_msg}")
                     continue
             
-            # Update the document's total_chunks count
+            # Update the document_processing's total_chunks count
             update_document_chunk_count(session, document.id)
             
             # Commit all changes

@@ -14,7 +14,7 @@ from src.database.operations import (
     toggle_document_active,
     delete_document
 )
-from src.document.embeddings import create_embedding
+from src.document_processing.embeddings import create_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def search_knowledge_base(query: str, top_k: int = 3) -> Tuple[bool, str, List[D
             
             logger.info(f"Returning top {len(top_results)} results with similarities: {[r['similarity'] for r in top_results]}")
             
-            return True, f"Found {len(top_results)} relevant document(s)", top_results
+            return True, f"Found {len(top_results)} relevant document_processing(s)", top_results
             
     except Exception as e:
         logger.error(f"Error in search_knowledge_base: {str(e)}")
@@ -156,7 +156,7 @@ def list_all_sources() -> Tuple[bool, str, List[Dict[str, Any]]]:
 
 def toggle_source_active(title: str, active: bool) -> Tuple[bool, str, Dict[str, Any]]:
     """
-    Toggle active status of a source document
+    Toggle active status of a source document_processing
     
     Args:
         title: Document title
@@ -193,7 +193,7 @@ def toggle_source_active(title: str, active: bool) -> Tuple[bool, str, Dict[str,
 
 def delete_source(title: str) -> Tuple[bool, str, Dict[str, Any]]:
     """
-    Delete a source document and all its chunks
+    Delete a source document_processing and all its chunks
     
     Args:
         title: Document title
@@ -214,7 +214,7 @@ def delete_source(title: str) -> Tuple[bool, str, Dict[str, Any]]:
                 return False, "Source not found", {}
             
             session.commit()
-            logger.info(f"Deleted document '{title}' and {chunk_count} chunks (CASCADE)")
+            logger.info(f"Deleted document_processing '{title}' and {chunk_count} chunks (CASCADE)")
             
             return True, "Source deleted successfully", {"deleted_chunks": chunk_count}
             

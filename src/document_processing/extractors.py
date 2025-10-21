@@ -1,5 +1,5 @@
 """
-Text extraction from various document formats (PDF, EPUB, TXT)
+Text extraction from various document_processing formats (PDF, EPUB, TXT)
 """
 import os
 import PyPDF2
@@ -83,7 +83,7 @@ def extract_text_from_epub(epub_file_path: str) -> List[str]:
     try:
         book = epub.read_epub(epub_file_path)
         
-        # Get all document items (chapters)
+        # Get all document_processing items (chapters)
         items = list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
         
         if len(items) == 0:

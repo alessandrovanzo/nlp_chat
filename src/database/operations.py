@@ -11,11 +11,11 @@ from src.database.models import Document, Chunk
 
 def get_document_by_id(session: Session, document_id: int) -> Optional[Document]:
     """
-    Get a document by its ID
+    Get a document_processing by its ID
     
     Args:
         session: Database session
-        document_id: ID of the document
+        document_id: ID of the document_processing
         
     Returns:
         The Document instance or None if not found
@@ -25,11 +25,11 @@ def get_document_by_id(session: Session, document_id: int) -> Optional[Document]
 
 def get_document_by_title(session: Session, title: str) -> Optional[Document]:
     """
-    Get a document by its title
+    Get a document_processing by its title
     
     Args:
         session: Database session
-        title: Title of the document
+        title: Title of the document_processing
         
     Returns:
         The Document instance or None if not found
@@ -45,29 +45,29 @@ def create_document(
     source_type: str
 ) -> Document:
     """
-    Create a new document
+    Create a new document_processing
     
     Args:
         session: Database session
-        title: Name of the source document (must be unique)
-        description: Description of the source document
-        source_type: Type of source document ('pdf', 'epub', 'txt')
+        title: Name of the source document_processing (must be unique)
+        description: Description of the source document_processing
+        source_type: Type of source document_processing ('pdf', 'epub', 'txt')
         
     Returns:
         The created Document instance
         
     Raises:
-        ValueError: If a document with the same title already exists
+        ValueError: If a document_processing with the same title already exists
     """
-    # Check if document already exists
+    # Check if document_processing already exists
     existing = get_document_by_title(session, title)
     if existing:
         raise ValueError(
             f"Document with title '{title}' already exists. "
-            f"Please use a different title or delete the existing document first."
+            f"Please use a different title or delete the existing document_processing first."
         )
     
-    # Create new document
+    # Create new document_processing
     document = Document(
         title=title,
         description=description,
@@ -96,7 +96,7 @@ def create_chunk(
     
     Args:
         session: Database session
-        document_id: ID of the parent document
+        document_id: ID of the parent document_processing
         content: Text content of the chunk
         embedding: Embedding vector
         start_page: Starting page number
@@ -124,11 +124,11 @@ def create_chunk(
 
 def update_document_chunk_count(session: Session, document_id: int) -> None:
     """
-    Update the total_chunks count for a document
+    Update the total_chunks count for a document_processing
     
     Args:
         session: Database session
-        document_id: ID of the document to update
+        document_id: ID of the document_processing to update
     """
     document = session.get(Document, document_id)
     if document:
@@ -145,7 +145,7 @@ def get_active_chunks_with_documents(session: Session) -> List[Dict[str, Any]]:
         session: Database session
         
     Returns:
-        List of dictionaries containing chunk and document information
+        List of dictionaries containing chunk and document_processing information
     """
     stmt = (
         select(Chunk, Document)
@@ -191,11 +191,11 @@ def get_all_documents(session: Session) -> List[Document]:
 
 def toggle_document_active(session: Session, title: str, active: bool) -> Optional[Document]:
     """
-    Toggle the active status of a document by title
+    Toggle the active status of a document_processing by title
     
     Args:
         session: Database session
-        title: Title of the document
+        title: Title of the document_processing
         active: New active status
         
     Returns:
@@ -213,14 +213,14 @@ def toggle_document_active(session: Session, title: str, active: bool) -> Option
 
 def delete_document(session: Session, title: str) -> Optional[int]:
     """
-    Delete a document by title (will cascade to chunks)
+    Delete a document_processing by title (will cascade to chunks)
     
     Args:
         session: Database session
-        title: Title of the document to delete
+        title: Title of the document_processing to delete
         
     Returns:
-        The number of chunks that were deleted, or None if document not found
+        The number of chunks that were deleted, or None if document_processing not found
     """
     stmt = select(Document).where(Document.title == title)
     document = session.execute(stmt).scalar_one_or_none()
