@@ -1,14 +1,12 @@
 """
-Chainlit chainlit_app interface with RAG support
+Chainlit chat interface with RAG support
 """
 import chainlit as cl
-from openai import OpenAI
-from src.config import OPENAI_API_KEY, MCP_SERVER_URL
+from src.config import MCP_SERVER_URL
+from src.chainlit_app.llm_service import get_completion_with_tools, get_streaming_completion
+from src.chainlit_app.ui_helpers import parse_sources_from_response, create_source_elements, format_sources_message
 import httpx
 import json
-
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 @cl.on_chat_start
@@ -50,56 +48,8 @@ async def main(message: cl.Message):
     # Add user message to history
     messages.append({"role": "user", "content": message.content})
     
-    # Define available tools for function calling
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "search_knowledge_base",
-                "description": "Search the knowledge base for relevant information using semantic search. Use this when the user asks about topics that might be in the knowledge base (programming, AI, databases, etc.).",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query to find relevant information"
-                        },
-                        "top_k": {
-                            "type": "integer",
-                            "description": "Number of results to return (default: 3)",
-                            "default": 3
-                        }
-                    },
-                    "required": ["query"]
-                }
-            }
-        }
-    ]
-    
-    # System message
-    system_message = {
-        "role": "system",
-        "content": """You are a helpful AI assistant with access to a specialized knowledge base containing curated information about programming, AI, databases, and technical topics.
-
-IMPORTANT: Always use the search_knowledge_base function when users ask about technical topics, even if you think you know the answer. The knowledge base contains specific, curated information that should be used.
-
-Topics that require searching include:
-- Programming (Python, FastAPI, async, REST APIs, etc.)
-- AI/ML (RAG, embeddings, NLP, machine learning, etc.)
-- Databases (SQLite, vector databases, etc.)
-
-After retrieving information, synthesize it into a helpful answer and cite your sources."""
-    }
-    
-    # First API call with function calling
-    response = client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[system_message] + messages,
-        tools=tools,
-        tool_choice="auto"
-    )
-    
-    response_message = response.choices[0].message
+    # Get completion with function calling enabled
+    response_message = get_completion_with_tools(messages)
     tool_calls = response_message.tool_calls
     
     # Handle tool calls if any
@@ -136,52 +86,19 @@ After retrieving information, synthesize it into a helpful answer and cite your 
             # Call the MCP tool
             function_response = await call_mcp_tool(function_name, function_args)
             
-            # Parse sources from response and create expandable elements
-            if "---SOURCES_JSON---" in function_response:
-                text_part, json_part = function_response.split("---SOURCES_JSON---", 1)
-                try:
-                    sources = json.loads(json_part.strip())
-                    
-                    # Create expandable text elements for each source
-                    for i, source in enumerate(sources, 1):
-                        title = source.get('metadata', {}).get('title', 'Untitled')
-                        similarity = source.get('similarity', 0)
-                        content = source.get('content', '')
-                        
-                        # Format content with metadata for better display
-                        formatted_content = f"Title: {title}\n"
-                        formatted_content += f"Relevance: {similarity:.2%}\n"
-                        formatted_content += f"Document ID: {source.get('id', 'N/A')}\n\n"
-                        formatted_content += "="*50 + "\n\n"
-                        formatted_content += content
-                        
-                        # Create a text element with the full content (no language for text wrapping)
-                        source_element = cl.Text(
-                            name=f"Source {i}: {title}",
-                            content=formatted_content,
-                            display="side"
-                        )
-                        sources_elements.append(source_element)
-                    
-                    # Display sources with "view more" links
-                    if sources_elements:
-                        sources_text = "📚 **Sources Retrieved:**\n\n"
-                        for i, source in enumerate(sources, 1):
-                            title = source.get('metadata', {}).get('title', 'Untitled')
-                            similarity = source.get('similarity', 0)
-                            # Show source name and relevance, with reference to expandable element
-                            preview = source.get('content', '')[:100] + "..." if len(source.get('content', '')) > 100 else source.get('content', '')
-                            sources_text += f"**Source {i}**: {title} (Relevance: {similarity:.0%})\n"
-                            sources_text += f"*Preview*: {preview}\n"
-                            sources_text += f"👉 *Click 'Source {i}: {title}' in the sidebar to view full text*\n\n"
-                        
-                        await cl.Message(
-                            content=sources_text,
-                            elements=sources_elements
-                        ).send()
+            # Parse sources from response and create display elements
+            text_part, sources = parse_sources_from_response(function_response)
+            
+            if sources:
+                # Create source elements for sidebar
+                sources_elements.extend(create_source_elements(sources))
                 
-                except json.JSONDecodeError:
-                    pass  # If parsing fails, continue without source display
+                # Display sources with previews
+                sources_text = format_sources_message(sources)
+                await cl.Message(
+                    content=sources_text,
+                    elements=sources_elements
+                ).send()
             
             # Add tool response to messages
             messages.append({
@@ -191,14 +108,9 @@ After retrieving information, synthesize it into a helpful answer and cite your 
                 "content": function_response
             })
         
-        # Second API call with tool results - with streaming
+        # Get streaming response with tool results
         msg = cl.Message(content="")
-        
-        stream = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[system_message] + messages,
-            stream=True
-        )
+        stream = get_streaming_completion(messages)
         
         full_response = ""
         for chunk in stream:
@@ -214,12 +126,7 @@ After retrieving information, synthesize it into a helpful answer and cite your 
     else:
         # No tool calls, just stream the response
         msg = cl.Message(content="")
-        
-        stream = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[system_message] + messages,
-            stream=True
-        )
+        stream = get_streaming_completion(messages)
         
         full_response = ""
         for chunk in stream:
