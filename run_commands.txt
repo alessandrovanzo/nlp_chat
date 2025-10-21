@@ -1,5 +1,0 @@
-MCP Server (running on 8001)
-python start_mcp_server.py
-
-Chainlit Frontend (running on 8000)
-chainlint run_app.py

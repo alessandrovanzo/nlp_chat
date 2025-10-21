@@ -1,12 +1,12 @@
+# Environment variables
+.env
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,31 +23,29 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/*
 # Database
 *.db
-rag_database.db
-
-# API Keys
-config.py
+data/*.db
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Chainlit
-.chainlit/
-.files/
-
 # Logs
 *.log
 
-.venv/*
-
-*.pdf
-*.epub
+# Temporary files
+*.tmp
+.chainlit/

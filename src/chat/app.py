@@ -1,16 +1,16 @@
+"""
+Chainlit chat interface with RAG support
+"""
 import chainlit as cl
 from openai import OpenAI
-from config import oai_key
+from src.config import OPENAI_API_KEY, MCP_SERVER_URL
 import httpx
 import json
 
 # Initialize OpenAI client
-client = OpenAI(api_key=oai_key)
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-# MCP Server configuration
-MCP_SERVER_URL = "http://localhost:8001"
 
-# Store conversation history in user session
 @cl.on_chat_start
 async def start():
     """Welcome message when chat starts"""
@@ -18,6 +18,7 @@ async def start():
     await cl.Message(
         content="👋 Hello! I'm your AI assistant with access to a knowledge base. I can search for information to help answer your questions!"
     ).send()
+
 
 async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
     """Call an MCP tool on the FastAPI backend"""
@@ -37,6 +38,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> str:
             return result["content"][0]["text"]
         except Exception as e:
             return f"Error communicating with MCP server: {str(e)}"
+
 
 @cl.on_message
 async def main(message: cl.Message):

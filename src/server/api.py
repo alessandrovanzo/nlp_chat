@@ -6,16 +6,16 @@ import numpy as np
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import sqlite3
-from contextlib import contextmanager
-from openai import OpenAI
-from config import oai_key
 import tempfile
 import os
 import logging
 import traceback
+
+from src.config import OPENAI_API_KEY, DB_PATH
+from src.database.models import get_db, process_document
+from src.document.embeddings import create_embedding
+from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(
@@ -26,11 +26,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAG MCP Server")
 
-# Database path
-DB_PATH = "rag_database.db"
-
 # Initialize OpenAI client
-openai_client = OpenAI(api_key=oai_key)
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -41,29 +39,23 @@ async def startup_event():
     logger.info(f"OpenAI client initialized")
     logger.info("=" * 60)
 
+
 # Pydantic models for MCP protocol
 class Tool(BaseModel):
     name: str
     description: str
     inputSchema: Dict[str, Any]
 
+
 class ToolCallRequest(BaseModel):
     name: str
     arguments: Dict[str, Any]
+
 
 class ToolCallResponse(BaseModel):
     content: List[Dict[str, Any]]
     isError: bool = False
 
-@contextmanager
-def get_db():
-    """Context manager for database connections"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     """Calculate cosine similarity between two vectors"""
@@ -71,43 +63,27 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     vec2 = np.array(vec2)
     return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
-def fake_embedding(text: str, dim: int = 384) -> List[float]:
-    """Generate a fake but consistent embedding for text (for backward compatibility)"""
-    # Use hash to make it deterministic
-    np.random.seed(hash(text) % (2**32))
-    embedding = np.random.randn(dim)
-    # Normalize
-    embedding = embedding / np.linalg.norm(embedding)
-    return embedding.tolist()
-
-def create_real_embedding(text: str) -> List[float]:
-    """Create embedding using OpenAI's text-embedding-3-small model"""
-    try:
-        response = openai_client.embeddings.create(
-            input=text,
-            model="text-embedding-3-small"
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        raise Exception(f"Error creating embedding: {str(e)}")
 
 @app.get("/")
 async def root():
     """Health check endpoint"""
     return {"status": "ok", "service": "RAG MCP Server"}
 
+
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page():
-    """Serve the PDF upload page"""
+    """Serve the document upload page"""
     try:
-        with open("upload_form.html", "r") as f:
+        html_path = os.path.join(os.path.dirname(__file__), "static", "upload.html")
+        with open(html_path, "r") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content)
     except FileNotFoundError:
         return HTMLResponse(
-            content="<h1>Error: upload_form.html not found</h1>",
+            content="<h1>Error: upload.html not found</h1>",
             status_code=500
         )
+
 
 @app.get("/mcp/tools")
 async def list_tools():
@@ -137,6 +113,7 @@ async def list_tools():
     logger.info(f"Returning {len(tools)} available tool(s)")
     return {"tools": [tool.dict() for tool in tools]}
 
+
 @app.post("/mcp/tools/call")
 async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
     """Execute a tool call"""
@@ -164,6 +141,7 @@ async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
             isError=True
         )
 
+
 async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
     """Search the knowledge base using vector similarity"""
     if not query:
@@ -177,17 +155,18 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
     
     # Generate embedding for query using OpenAI
     try:
-        query_embedding = create_real_embedding(query)
+        query_embedding = create_embedding(query)
         logger.info(f"Generated query embedding with dimension: {len(query_embedding)}")
     except Exception as e:
         logger.error(f"Failed to create OpenAI embedding: {str(e)}")
-        logger.warning("Falling back to fake embeddings")
-        query_embedding = fake_embedding(query)
+        return ToolCallResponse(
+            content=[{"type": "text", "text": f"Error creating embedding: {str(e)}"}],
+            isError=True
+        )
     
     # Search database (only active documents)
     try:
         with get_db() as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT c.id, c.content, c.embedding, c.start_page, c.end_page, 
@@ -272,7 +251,6 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
             logger.info(f"Returning top {len(top_results)} results with similarities: {[r['similarity'] for r in top_results]}")
             
             # Format response with structured data
-            # Include both human-readable text and structured JSON for parsing
             response_text = f"Found {len(top_results)} relevant document(s):\n\n"
             for i, result in enumerate(top_results, 1):
                 response_text += f"{i}. [{result['metadata'].get('title', 'Untitled')}]\n"
@@ -295,8 +273,9 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
             isError=True
         )
 
+
 @app.post("/upload-pdf")
-async def upload_pdf(
+async def upload_document(
     pdf_file: UploadFile = File(...),
     source_name: str = Form(...),
     description: str = Form(...),
@@ -333,9 +312,7 @@ async def upload_pdf(
         
         logger.info(f"Saved temporary {file_type} file: {tmp_file_path}")
         
-        # Process the document using pdf_processor (which now handles both types)
-        from pdf_processor import process_document
-        
+        # Process the document
         result = process_document(
             file_path=tmp_file_path,
             source_name=source_name,
@@ -356,26 +333,13 @@ async def upload_pdf(
         return JSONResponse(content=result)
         
     except Exception as e:
-        logger.error(f"Error in upload_pdf: {str(e)}")
+        logger.error(f"Error in upload_document: {str(e)}")
         logger.error(traceback.format_exc())
         return JSONResponse(
             content={"success": False, "error": f"Server error: {str(e)}"},
             status_code=500
         )
 
-@app.post("/initialize")
-async def initialize_database():
-    """Initialize the database with fake data"""
-    logger.info("Initializing database with sample data")
-    from init_db import initialize_db
-    try:
-        initialize_db()
-        logger.info("Database initialization completed successfully")
-        return {"status": "success", "message": "Database initialized with sample data"}
-    except Exception as e:
-        logger.error(f"Database initialization failed: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sources")
 async def list_sources():
@@ -383,7 +347,6 @@ async def list_sources():
     logger.info("Request received: GET /sources - Listing all sources")
     try:
         with get_db() as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             
             # Get all documents with their chunk counts
@@ -421,6 +384,7 @@ async def list_sources():
             status_code=500
         )
 
+
 @app.post("/sources/toggle")
 async def toggle_source(request: dict):
     """Toggle active status of a source (document)"""
@@ -437,7 +401,6 @@ async def toggle_source(request: dict):
     
     try:
         with get_db() as conn:
-            conn.execute("PRAGMA foreign_keys = ON")
             cursor = conn.cursor()
             
             # Get chunk count first
@@ -471,6 +434,7 @@ async def toggle_source(request: dict):
             status_code=500
         )
 
+
 @app.post("/sources/delete")
 async def delete_source(request: dict):
     """Delete a source document and all its chunks (CASCADE)"""
@@ -486,7 +450,6 @@ async def delete_source(request: dict):
     
     try:
         with get_db() as conn:
-            conn.execute("PRAGMA foreign_keys = ON")  # Enable CASCADE DELETE
             cursor = conn.cursor()
             
             # Get chunk count before deletion
@@ -519,6 +482,7 @@ async def delete_source(request: dict):
             content={"success": False, "error": str(e)},
             status_code=500
         )
+
 
 if __name__ == "__main__":
     import uvicorn
