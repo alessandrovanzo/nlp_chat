@@ -2,7 +2,7 @@
 
 A sophisticated RAG (Retrieval-Augmented Generation) chatbot with document upload capabilities. Upload PDF, EPUB, and TXT documents to create a searchable knowledge base powered by OpenAI embeddings.
 
-## 🎯 Features
+## Features
 
 - **Multi-format Support**: Upload PDF, EPUB, and TXT documents
 - **Semantic Search**: Uses OpenAI embeddings for intelligent document retrieval
@@ -11,7 +11,7 @@ A sophisticated RAG (Retrieval-Augmented Generation) chatbot with document uploa
 - **Source Management**: Toggle documents on/off, view metadata, delete sources
 - **MCP Protocol**: FastAPI backend implements Model Context Protocol for tool calling
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 nlp_chat/
@@ -42,7 +42,7 @@ nlp_chat/
 └── README.md                     # This file
 ```
 
-## 🚀 Setup
+## Setup
 
 ### 1. Install Dependencies
 
@@ -73,7 +73,7 @@ The database will be created automatically when you first start the server, but 
 python -m src.database.init_db
 ```
 
-## 🎮 Usage
+## Usage
 
 ### Start the Backend Server
 
@@ -109,7 +109,7 @@ The chat interface will start on `http://localhost:8000`
 2. Ask questions related to your uploaded documents
 3. The AI will automatically search the knowledge base and provide answers with sources
 
-## 🔧 Configuration
+## Configuration
 
 ### Chunking Settings
 
@@ -127,7 +127,7 @@ The chat interface will start on `http://localhost:8000`
 - **EPUB**: Converts to virtual pages (300 words = 1 page)
 - **TXT**: Converts to virtual pages (300 words = 1 page)
 
-## 📊 Database Schema
+## Database Schema
 
 ### `documents` Table
 - Stores document metadata
@@ -139,7 +139,7 @@ The chat interface will start on `http://localhost:8000`
 - Links to parent document (CASCADE DELETE)
 - Includes page ranges and metadata
 
-## 🛠️ Utility Scripts
+## Utility Scripts
 
 ### Inspect a Chunk
 
@@ -149,13 +149,13 @@ python scripts/inspect_chunk.py <chunk_id>
 
 Displays detailed information about a specific chunk, including content and metadata.
 
-## 🔐 Security
+## Security
 
 - API keys stored in `.env` (excluded from git)
 - Never commit `.env` file
 - Database excluded from git
 
-## 📝 Technology Stack
+## Technology Stack
 
 - **Frontend**: Chainlit (chat UI)
 - **Backend**: FastAPI
@@ -164,7 +164,7 @@ Displays detailed information about a specific chunk, including content and meta
 - **LLM**: GPT-4 Turbo (configurable)
 - **Document Processing**: PyPDF2, ebooklib, BeautifulSoup4
 
-## 🤝 Architecture
+## Architecture
 
 ```
 User Query → Chainlit Chat Interface
@@ -186,7 +186,7 @@ User Query → Chainlit Chat Interface
        Display Answer with Sources
 ```
 
-## 📚 API Endpoints
+## API Endpoints
 
 ### FastAPI Server (Port 8001)
 
@@ -199,7 +199,7 @@ User Query → Chainlit Chat Interface
 - `POST /sources/toggle` - Toggle document active status
 - `POST /sources/delete` - Delete document and chunks
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Database Issues
 
@@ -220,11 +220,11 @@ If documents are too large, the system will automatically split chunks. You can 
 - Reduce "pages per chunk" setting
 - Turn off "prepend metadata"
 
-## 📄 License
+## License
 
 This project is provided as-is for educational and personal use.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built with:
 - [Chainlit](https://github.com/Chainlit/chainlit) - Chat UI framework

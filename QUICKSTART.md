@@ -1,4 +1,4 @@
-# 🚀 Quick Start Guide
+# Quick Start Guide
 
 Get your RAG chatbot running in 3 minutes!
 
@@ -78,15 +78,15 @@ Ask questions like:
 
 The AI will automatically search your uploaded documents and provide answers with sources!
 
-## 🎯 That's It!
+## Summary
 
 You now have a fully functional RAG chatbot with:
-- ✅ Document upload (PDF/EPUB/TXT)
-- ✅ Semantic search
-- ✅ AI-powered answers
-- ✅ Source citations
+- Document upload (PDF/EPUB/TXT)
+- Semantic search
+- AI-powered answers
+- Source citations
 
-## 📚 Common Tasks
+## Common Tasks
 
 ### Add More Documents
 Just go back to `http://localhost:8001/upload` and upload more files!
@@ -105,7 +105,7 @@ python scripts/inspect_chunk.py <chunk_id>
 ### Stop the Servers
 Press `Ctrl+C` in each terminal window.
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 **Import errors?**
 Make sure you're in the project directory:
@@ -123,7 +123,7 @@ lsof -ti:8001 | xargs kill  # Kill server
 lsof -ti:8000 | xargs kill  # Kill chat
 ```
 
-## 🎉 Enjoy Your RAG Chatbot!
+## Additional Information
 
 For more details, see `README.md`.
 
