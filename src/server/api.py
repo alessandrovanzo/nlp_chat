@@ -81,7 +81,7 @@ async def root():
 async def upload_page():
     """Serve the document upload page"""
     try:
-        html_path = os.path.join(os.path.dirname(__file__), "static", "upload.html")
+        html_path = os.path.join(os.path.dirname(__file__), "document_upload_form", "upload.html")
         with open(html_path, "r") as f:
             html_content = f.read()
         return HTMLResponse(content=html_content)
