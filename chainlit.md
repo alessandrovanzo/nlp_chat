@@ -6,7 +6,11 @@ Hi there! I'm your AI assistant with access to a knowledge base. I can search fo
 
 Want to add your own documents to the knowledge base?
 
-**[Click here to upload documents](http://localhost:8001/upload)**
+<div id="upload-link">
+<a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8001/upload', '_blank')">
+<strong>Click here to upload documents</strong>
+</a>
+</div>
 
 Upload your PDF documents with custom chunking and metadata. They'll be embedded using OpenAI and immediately searchable!
 
@@ -21,7 +25,9 @@ Just ask me questions! I'll automatically search the knowledge base when needed 
 
 ## Quick Links
 
-- **Upload documents:** [http://localhost:8001/upload](http://localhost:8001/upload)
-- **MCP Server:** [http://localhost:8001](http://localhost:8001)
+<div id="quick-links">
+- <strong>Upload documents:</strong> <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8001/upload', '_blank')">Open Upload Page</a>
+- <strong>MCP Server:</strong> <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8001', '_blank')">Open MCP Server</a>
+</div>
 
 Happy chatting!
