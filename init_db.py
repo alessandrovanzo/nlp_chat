@@ -77,30 +77,55 @@ def initialize_db():
     # Drop existing table if it exists
     cursor.execute("DROP TABLE IF EXISTS documents")
     
-    # Create documents table
+    # Create documents table with new schema
     cursor.execute("""
         CREATE TABLE documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
             embedding TEXT NOT NULL,
-            metadata TEXT,
+            title TEXT,
+            description TEXT,
+            source_type TEXT,
+            start_page INTEGER,
+            end_page INTEGER,
+            chunk_number INTEGER,
+            total_chunks INTEGER,
+            unit_name TEXT,
+            active BOOLEAN DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
+    # Create indexes
+    cursor.execute("CREATE INDEX idx_source_type ON documents(source_type)")
+    cursor.execute("CREATE INDEX idx_title ON documents(title)")
+    cursor.execute("CREATE INDEX idx_chunk_number ON documents(chunk_number)")
+    cursor.execute("CREATE INDEX idx_active ON documents(active)")
+    
     # Insert sample documents
     print("Populating database with sample documents...")
-    for doc in SAMPLE_DOCS:
+    for i, doc in enumerate(SAMPLE_DOCS, 1):
         content = doc["content"]
         embedding = fake_embedding(content)
-        metadata = json.dumps({
-            "title": doc["title"],
-            "category": doc["category"]
-        })
         
         cursor.execute(
-            "INSERT INTO documents (content, embedding, metadata) VALUES (?, ?, ?)",
-            (content, json.dumps(embedding), metadata)
+            """INSERT INTO documents 
+            (content, embedding, title, description, source_type, start_page, end_page, 
+             chunk_number, total_chunks, unit_name, active) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                content, 
+                json.dumps(embedding),
+                doc["title"],
+                f"Sample document about {doc['category']}",
+                "sample",
+                1,
+                1,
+                i,
+                len(SAMPLE_DOCS),
+                "document",
+                True
+            )
         )
         print(f"  ✓ Added: {doc['title']}")
     

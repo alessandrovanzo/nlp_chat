@@ -15,7 +15,7 @@ def analyze_chunks():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    cursor.execute("SELECT id, content, metadata FROM documents")
+    cursor.execute("SELECT id, content, source_type FROM documents")
     all_chunks = cursor.fetchall()
     conn.close()
     
@@ -36,19 +36,18 @@ def analyze_chunks():
     junk_chunks = []
     good_chunks = []
     
-    for doc_id, content, metadata_str in all_chunks:
-        metadata = json.loads(metadata_str)
+    for doc_id, content, source_type in all_chunks:
         length = len(content)
         
         # Check if it's junk
         is_junk = any(re.search(pattern, content, re.IGNORECASE) for pattern in junk_patterns)
         
         if is_junk:
-            junk_chunks.append((doc_id, length, metadata.get('source_type')))
+            junk_chunks.append((doc_id, length, source_type))
         elif length < 500:  # Very short chunks might be problematic
-            short_chunks.append((doc_id, length, metadata.get('source_type')))
+            short_chunks.append((doc_id, length, source_type))
         else:
-            good_chunks.append((doc_id, length, metadata.get('source_type')))
+            good_chunks.append((doc_id, length, source_type))
     
     print(f"Chunks with junk content (navigation/formatting): {len(junk_chunks)}")
     print(f"Very short chunks (<500 chars): {len(short_chunks)}")

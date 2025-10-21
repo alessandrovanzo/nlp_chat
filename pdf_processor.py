@@ -282,18 +282,25 @@ def store_chunk_in_db(
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Combine metadata
-    metadata = {
-        "title": source_name,
-        "description": description,
-        "source_type": source_type,
-        **chunk_metadata
-    }
-    
-    # Insert into database
+    # Insert into database with separate columns
     cursor.execute(
-        "INSERT INTO documents (content, embedding, metadata) VALUES (?, ?, ?)",
-        (chunk_text, json.dumps(embedding), json.dumps(metadata))
+        """INSERT INTO documents 
+        (content, embedding, title, description, source_type, start_page, end_page, 
+         chunk_number, total_chunks, unit_name, active) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            chunk_text, 
+            json.dumps(embedding), 
+            source_name,
+            description,
+            source_type,
+            chunk_metadata.get('start_page'),
+            chunk_metadata.get('end_page'),
+            chunk_metadata.get('chunk_number'),
+            chunk_metadata.get('total_chunks'),
+            chunk_metadata.get('unit_name'),
+            True  # active by default
+        )
     )
     
     doc_id = cursor.lastrowid

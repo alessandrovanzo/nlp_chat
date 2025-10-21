@@ -188,31 +188,13 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, content, embedding, metadata FROM documents")
+            cursor.execute("""
+                SELECT id, content, embedding, title, description, source_type, 
+                       start_page, end_page, chunk_number, total_chunks, unit_name, active
+                FROM documents 
+                WHERE active = 1
+            """)
             rows = cursor.fetchall()
-            
-            if not rows:
-                logger.warning("No documents found in database")
-                return ToolCallResponse(
-                    content=[{"type": "text", "text": "No documents found in the knowledge base."}],
-                    isError=False
-                )
-            
-            # Filter for active documents only
-            active_rows = []
-            for row in rows:
-                try:
-                    metadata = json.loads(row[3]) if row[3] else {}
-                    # If 'active' field doesn't exist, default to True (for backward compatibility)
-                    is_active = metadata.get('active', True)
-                    if is_active:
-                        active_rows.append(row)
-                except Exception as e:
-                    logger.error(f"Error checking active status for document {row[0]}: {str(e)}")
-                    # Include by default if there's an error parsing metadata
-                    active_rows.append(row)
-            
-            rows = active_rows
             
             if not rows:
                 logger.warning("No active documents found in database")
@@ -230,12 +212,33 @@ async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
                     doc_id = row[0]
                     content = row[1]
                     embedding = json.loads(row[2])
-                    metadata = json.loads(row[3]) if row[3] else {}
+                    title = row[3]
+                    description = row[4]
+                    source_type = row[5]
+                    start_page = row[6]
+                    end_page = row[7]
+                    chunk_number = row[8]
+                    total_chunks = row[9]
+                    unit_name = row[10]
+                    active = row[11]
+                    
+                    # Build metadata dict for compatibility
+                    metadata = {
+                        "title": title,
+                        "description": description,
+                        "source_type": source_type,
+                        "start_page": start_page,
+                        "end_page": end_page,
+                        "chunk_number": chunk_number,
+                        "total_chunks": total_chunks,
+                        "unit_name": unit_name,
+                        "active": active
+                    }
                     
                     # Check embedding dimensions
                     if len(embedding) != len(query_embedding):
                         logger.error(
-                            f"Dimension mismatch for document {doc_id} ('{metadata.get('title', 'Untitled')}'): "
+                            f"Dimension mismatch for document {doc_id} ('{title}'): "
                             f"query={len(query_embedding)}, doc={len(embedding)}"
                         )
                         continue
@@ -382,12 +385,12 @@ async def list_sources():
             # Get all documents and group by source (title)
             cursor.execute("""
                 SELECT 
-                    json_extract(metadata, '$.title') as title,
-                    json_extract(metadata, '$.description') as description,
-                    json_extract(metadata, '$.source_type') as source_type,
+                    title,
+                    description,
+                    source_type,
                     COUNT(*) as chunk_count,
                     MIN(id) as first_id,
-                    COALESCE(json_extract(metadata, '$.active'), 1) as active
+                    MAX(active) as active
                 FROM documents
                 GROUP BY title
                 ORDER BY MAX(created_at) DESC
@@ -433,33 +436,23 @@ async def toggle_source(request: dict):
             
             # Update all chunks with this title
             cursor.execute("""
-                SELECT id, metadata FROM documents
-                WHERE json_extract(metadata, '$.title') = ?
-            """, (title,))
+                UPDATE documents
+                SET active = ?
+                WHERE title = ?
+            """, (1 if active else 0, title))
             
-            rows = cursor.fetchall()
-            if not rows:
+            updated_count = cursor.rowcount
+            
+            if updated_count == 0:
                 return JSONResponse(
                     content={"success": False, "error": "Source not found"},
                     status_code=404
                 )
             
-            # Update each document's metadata to include active status
-            for row in rows:
-                doc_id = row[0]
-                metadata = json.loads(row[1])
-                metadata['active'] = active
-                
-                cursor.execute("""
-                    UPDATE documents
-                    SET metadata = ?
-                    WHERE id = ?
-                """, (json.dumps(metadata), doc_id))
-            
             conn.commit()
-            logger.info(f"Updated {len(rows)} chunks for source '{title}'")
+            logger.info(f"Updated {updated_count} chunks for source '{title}'")
             
-            return {"success": True, "updated_chunks": len(rows), "active": active}
+            return {"success": True, "updated_chunks": updated_count, "active": active}
     except Exception as e:
         logger.error(f"Error toggling source: {str(e)}")
         logger.error(traceback.format_exc())
@@ -488,7 +481,7 @@ async def delete_source(request: dict):
             # Count chunks before deletion
             cursor.execute("""
                 SELECT COUNT(*) FROM documents
-                WHERE json_extract(metadata, '$.title') = ?
+                WHERE title = ?
             """, (title,))
             
             count = cursor.fetchone()[0]
@@ -502,7 +495,7 @@ async def delete_source(request: dict):
             # Delete all chunks with this title
             cursor.execute("""
                 DELETE FROM documents
-                WHERE json_extract(metadata, '$.title') = ?
+                WHERE title = ?
             """, (title,))
             
             conn.commit()

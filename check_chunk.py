@@ -15,7 +15,8 @@ def show_chunk(doc_id):
     cursor = conn.cursor()
     
     cursor.execute("""
-        SELECT id, content, metadata 
+        SELECT id, content, title, source_type, start_page, end_page, 
+               chunk_number, total_chunks, unit_name, active
         FROM documents 
         WHERE id = ?
     """, (doc_id,))
@@ -27,18 +28,16 @@ def show_chunk(doc_id):
         print(f"No chunk found with ID {doc_id}")
         return
     
-    doc_id, content, metadata_str = result
-    metadata = json.loads(metadata_str)
+    doc_id, content, title, source_type, start_page, end_page, chunk_number, total_chunks, unit_name, active = result
     
     print(f"\n{'='*100}")
     print(f"CHUNK DETAILS (DB ID: {doc_id})")
     print(f"{'='*100}")
-    print(f"Source: {metadata.get('title', 'Unknown')}")
-    print(f"Type: {metadata.get('source_type', 'Unknown')}")
-    print(f"Pages/Chapters: {metadata.get('start_page', '?')}-{metadata.get('end_page', '?')} ({metadata.get('unit_name', 'units')})")
-    print(f"Chunk: {metadata.get('chunk_number', '?')}/{metadata.get('total_chunks', '?')}")
-    if 'split_part' in metadata:
-        print(f"Split: {metadata['split_part']}")
+    print(f"Source: {title or 'Unknown'}")
+    print(f"Type: {source_type or 'Unknown'}")
+    print(f"Pages/Chapters: {start_page or '?'}-{end_page or '?'} ({unit_name or 'units'})")
+    print(f"Chunk: {chunk_number or '?'}/{total_chunks or '?'}")
+    print(f"Active: {'Yes' if active else 'No'}")
     print(f"\nContent length: {len(content)} characters")
     print(f"\n{'='*100}")
     print("FULL CONTENT:")
