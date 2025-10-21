@@ -41,6 +41,41 @@ def get_file_type(file_path: str) -> str:
         return 'unsupported'
 
 
+def split_text_by_words(text: str, words_per_page: int = 300) -> List[str]:
+    """
+    Split text into pages based on word count
+    
+    Args:
+        text: The text to split
+        words_per_page: Number of words per page (default: 300)
+        
+    Returns:
+        List of strings, each containing approximately words_per_page words
+    """
+    # Split text into words
+    words = text.split()
+    
+    if not words:
+        return []
+    
+    pages = []
+    current_page_words = []
+    
+    for word in words:
+        current_page_words.append(word)
+        
+        # When we reach the target word count, create a new page
+        if len(current_page_words) >= words_per_page:
+            pages.append(' '.join(current_page_words))
+            current_page_words = []
+    
+    # Add any remaining words as the last page
+    if current_page_words:
+        pages.append(' '.join(current_page_words))
+    
+    return pages
+
+
 def extract_text_from_pdf(pdf_file_path: str) -> List[str]:
     """
     Extract text from PDF, returning a list where each element is a page's text
@@ -79,19 +114,18 @@ def extract_text_from_pdf(pdf_file_path: str) -> List[str]:
 
 def extract_text_from_epub(epub_file_path: str) -> List[str]:
     """
-    Extract text from EPUB, returning a list where each element is a chapter's text
+    Extract text from EPUB, returning a list where each element is a page's text
+    Pages are calculated as 300 words each
     
     Args:
         epub_file_path: Path to the EPUB file
         
     Returns:
-        List of strings, one per chapter
+        List of strings, one per page (300 words)
         
     Raises:
         Exception: If file is corrupted or cannot be read
     """
-    chapters_text = []
-    
     try:
         book = epub.read_epub(epub_file_path)
         
@@ -101,38 +135,47 @@ def extract_text_from_epub(epub_file_path: str) -> List[str]:
         if len(items) == 0:
             raise Exception("EPUB file is empty or corrupted")
         
+        # Extract all text from all chapters into one continuous text
+        full_text = []
         for item in items:
             # Parse HTML content
             soup = BeautifulSoup(item.get_content(), 'html.parser')
             # Extract text
-            text = soup.get_text(separator='\n', strip=True)
-            if text:  # Only add non-empty chapters
-                chapters_text.append(text)
+            text = soup.get_text(separator=' ', strip=True)
+            if text:
+                full_text.append(text)
+        
+        # Combine all text
+        combined_text = ' '.join(full_text)
+        
+        if not combined_text.strip():
+            raise Exception("EPUB file contains no text")
+        
+        # Split into pages of 300 words each
+        pages = split_text_by_words(combined_text, words_per_page=300)
+        
+        return pages
                 
     except ebooklib.epub.EpubException as e:
         raise Exception(f"Corrupted or invalid EPUB file: {str(e)}")
     except Exception as e:
         raise Exception(f"Error reading EPUB: {str(e)}")
-    
-    return chapters_text
 
 
 def extract_text_from_txt(txt_file_path: str) -> List[str]:
     """
-    Extract text from TXT, returning a list where each element is a section's text
-    Sections are separated by double newlines (paragraph breaks)
+    Extract text from TXT, returning a list where each element is a page's text
+    Pages are calculated as 300 words each
     
     Args:
         txt_file_path: Path to the TXT file
         
     Returns:
-        List of strings, one per section
+        List of strings, one per page (300 words)
         
     Raises:
         Exception: If file cannot be read
     """
-    sections_text = []
-    
     try:
         with open(txt_file_path, 'r', encoding='utf-8') as file:
             content = file.read()
@@ -140,37 +183,23 @@ def extract_text_from_txt(txt_file_path: str) -> List[str]:
         if not content.strip():
             raise Exception("TXT file is empty")
         
-        # Split by double newlines to create sections (like chapters in EPUB)
-        # This treats each paragraph or section as a logical unit
-        sections = content.split('\n\n')
+        # Split into pages of 300 words each
+        pages = split_text_by_words(content, words_per_page=300)
         
-        for section in sections:
-            text = section.strip()
-            if text:  # Only add non-empty sections
-                sections_text.append(text)
-        
-        # If no sections were found (no double newlines), treat entire file as one section
-        if not sections_text:
-            sections_text.append(content.strip())
+        return pages
                 
     except UnicodeDecodeError:
         # Try with different encoding
         try:
             with open(txt_file_path, 'r', encoding='latin-1') as file:
                 content = file.read()
-            sections = content.split('\n\n')
-            for section in sections:
-                text = section.strip()
-                if text:
-                    sections_text.append(text)
-            if not sections_text:
-                sections_text.append(content.strip())
+            
+            pages = split_text_by_words(content, words_per_page=300)
+            return pages
         except Exception as e:
             raise Exception(f"Error reading TXT file with alternative encoding: {str(e)}")
     except Exception as e:
         raise Exception(f"Error reading TXT: {str(e)}")
-    
-    return sections_text
 
 
 def chunk_pages(pages: List[str], pages_per_chunk: int = 3, unit_name: str = "page") -> List[Dict[str, Any]]:
@@ -394,10 +423,10 @@ def process_document(
             unit_name = "page"
         elif file_type == 'epub':
             pages = extract_text_from_epub(file_path)
-            unit_name = "chapter"
+            unit_name = "page"  # EPUB now uses word-count-based pages (300 words each)
         else:  # txt
             pages = extract_text_from_txt(file_path)
-            unit_name = "section"
+            unit_name = "page"  # TXT uses word-count-based pages (300 words each)
         
         if not pages:
             raise Exception(f"No text extracted from {file_type.upper()}")

@@ -21,12 +21,16 @@ async def start():
 
 Welcome! This tool allows you to upload PDF, EPUB, and TXT documents to the knowledge base.
 
+## How it works:
+- **PDF files**: Uses actual pages
+- **EPUB & TXT files**: Automatically converts to pages (300 words = 1 page)
+
 ## Instructions:
 1. **Upload a PDF, EPUB, or TXT file** using the attachment button below
 2. I'll ask you for:
    - **Source Name**: A title for your document
    - **Description**: A brief description of the content
-   - **Units per Chunk**: How many pages/chapters/sections to group together (1-10)
+   - **Pages per Chunk**: How many pages to group together (1-10, default: 3)
 3. The document will be processed, embedded, and added to the knowledge base
 
 Ready to upload your first document? Click the attachment button (📎) to get started!
@@ -98,12 +102,9 @@ async def handle_message(message: cl.Message):
         cl.user_session.set("step", "awaiting_pages_per_chunk")
         
         file_type = cl.user_session.get("file_type", "pdf")
-        if file_type == "epub":
-            unit_name = "chapters"
-        elif file_type == "txt":
-            unit_name = "sections"
-        else:
-            unit_name = "pages"
+        # All file types now use "pages" as the unit
+        # EPUB and TXT use word-count-based pages (300 words each)
+        unit_name = "pages"
         
         await cl.Message(
             content=f"✅ Description set!\n\nFinally, how many **{unit_name} per chunk** would you like? (Enter a number between 1 and 10, default is 3):"
@@ -142,12 +143,9 @@ async def process_and_store_pdf():
     file_type = cl.user_session.get("file_type", "pdf")
     
     file_type_display = file_type.upper()
-    if file_type == "epub":
-        unit_name = "chapters"
-    elif file_type == "txt":
-        unit_name = "sections"
-    else:
-        unit_name = "pages"
+    # All file types now use "pages" as the unit
+    # EPUB and TXT use word-count-based pages (300 words each)
+    unit_name = "pages"
     
     # Show processing message
     processing_msg = await cl.Message(
