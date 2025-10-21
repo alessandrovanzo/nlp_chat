@@ -6,7 +6,6 @@ import json
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
 import tempfile
 import os
 import logging
@@ -15,6 +14,14 @@ import traceback
 from src.config import OPENAI_API_KEY, DB_PATH
 from src.document_processing.processor import process_document
 from src.mcp_server import services
+from src.mcp_server.tools import (
+    TOOLS,
+    ToolCallRequest,
+    ToolCallResponse,
+    handle_search_knowledge_base,
+    handle_get_available_sources,
+    handle_search_specific_documents
+)
 from openai import OpenAI
 
 # Configure logging
@@ -38,23 +45,6 @@ async def startup_event():
     logger.info(f"Database path: {DB_PATH}")
     logger.info(f"OpenAI client initialized")
     logger.info("=" * 60)
-
-
-# Pydantic models for MCP protocol
-class Tool(BaseModel):
-    name: str
-    description: str
-    inputSchema: Dict[str, Any]
-
-
-class ToolCallRequest(BaseModel):
-    name: str
-    arguments: Dict[str, Any]
-
-
-class ToolCallResponse(BaseModel):
-    content: List[Dict[str, Any]]
-    isError: bool = False
 
 
 @app.get("/")
@@ -82,29 +72,8 @@ async def upload_page():
 async def list_tools():
     """List available MCP tools"""
     logger.info("Request received: GET /mcp/tools - Listing available tools")
-    tools = [
-        Tool(
-            name="search_knowledge_base",
-            description="Search the knowledge base for relevant information using semantic search. Returns the most relevant documents based on the query.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query to find relevant information"
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "description": "Number of results to return (default: 3)",
-                        "default": 3
-                    }
-                },
-                "required": ["query"]
-            }
-        )
-    ]
-    logger.info(f"Returning {len(tools)} available tool(s)")
-    return {"tools": [tool.dict() for tool in tools]}
+    logger.info(f"Returning {len(TOOLS)} available tool(s)")
+    return {"tools": [tool.dict() for tool in TOOLS]}
 
 
 @app.post("/mcp/tools/call")
@@ -122,6 +91,14 @@ async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
                 query=request.arguments.get("query", ""),
                 top_k=request.arguments.get("top_k", 3)
             )
+        elif request.name == "get_available_sources":
+            return await handle_get_available_sources()
+        elif request.name == "search_specific_documents":
+            return await handle_search_specific_documents(
+                query=request.arguments.get("query", ""),
+                document_ids=request.arguments.get("document_ids", []),
+                top_k=request.arguments.get("top_k", 3)
+            )
         else:
             error_msg = f"Tool '{request.name}' not found"
             logger.error(error_msg)
@@ -133,40 +110,6 @@ async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
             content=[{"type": "text", "text": f"Error: {str(e)}"}],
             isError=True
         )
-
-
-async def handle_search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
-    """Handle search knowledge base tool call - delegates to service layer"""
-    success, message, results = services.search_knowledge_base(query, top_k)
-    
-    if not success:
-        return ToolCallResponse(
-            content=[{"type": "text", "text": f"Error: {message}"}],
-            isError=True
-        )
-    
-    # No results but successful (e.g., no active documents)
-    if not results:
-        return ToolCallResponse(
-            content=[{"type": "text", "text": message}],
-            isError=False
-        )
-    
-    # Format response with structured data
-    response_text = f"{message}:\n\n"
-    for i, result in enumerate(results, 1):
-        response_text += f"{i}. [{result['metadata'].get('title', 'Untitled')}]\n"
-        response_text += f"   Relevance: {result['similarity']:.2%}\n"
-        response_text += f"   {result['content']}\n\n"
-    
-    # Add structured data as JSON for the client to parse
-    response_text += "\n---SOURCES_JSON---\n"
-    response_text += json.dumps(results, indent=2)
-    
-    return ToolCallResponse(
-        content=[{"type": "text", "text": response_text}],
-        isError=False
-    )
 
 
 @app.post("/upload-pdf")

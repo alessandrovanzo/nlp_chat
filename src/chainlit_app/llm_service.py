@@ -12,12 +12,30 @@ SYSTEM_MESSAGE = {
     "role": "system",
     "content": """You are a helpful AI assistant with access to a specialized knowledge base containing curated information about programming, AI, databases, and technical topics.
 
-IMPORTANT: Always use the search_knowledge_base function when users ask about technical topics, even if you think you know the answer. The knowledge base contains specific, curated information that should be used.
+You have THREE tools available:
 
-Topics that require searching include:
-- Programming (Python, FastAPI, async, REST APIs, etc.)
-- AI/ML (RAG, embeddings, NLP, machine learning, etc.)
-- Databases (SQLite, vector databases, etc.)
+1. get_available_sources - Lists all documents in the knowledge base with their IDs, titles, descriptions, and chunk counts
+2. search_knowledge_base - Searches across ALL documents in the knowledge base
+3. search_specific_documents - Searches within SPECIFIC documents by their IDs
+
+WHEN TO USE EACH TOOL:
+
+- Use get_available_sources FIRST when:
+  * Users ask about specific authors, books, or sources (e.g., "What does Taleb say about X?")
+  * You need to identify which documents to search
+  * Users want to know what's in the knowledge base
+
+- Use search_specific_documents when:
+  * You've identified specific document IDs from get_available_sources
+  * Users ask about content from specific sources
+  * You want to search within a subset of documents
+  * Example workflow: User asks "What does Taleb say about Stiglitz?" → Call get_available_sources → Find Taleb-related document IDs → Call search_specific_documents with those IDs and query "Stiglitz"
+
+- Use search_knowledge_base when:
+  * Users ask general questions without specifying sources
+  * You want to search across all documents
+
+IMPORTANT: Always search the knowledge base when users ask about technical topics, even if you think you know the answer. The knowledge base contains specific, curated information that should be used.
 
 After retrieving information, synthesize it into a helpful answer and cite your sources."""
 }
@@ -43,6 +61,47 @@ TOOLS = [
                     }
                 },
                 "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_available_sources",
+            "description": "Get a list of all available sources/documents in the knowledge base with their metadata. Returns document IDs, titles, descriptions, chunk counts, and active status. Use this to discover what documents are available before searching specific documents.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_specific_documents",
+            "description": "Search within specific documents by their IDs using semantic search. Use this when you want to restrict your search to particular documents. First call get_available_sources to find the document IDs, then use this tool to search within those specific documents.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to find relevant information"
+                    },
+                    "document_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "description": "List of document IDs to search within"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "Number of results to return (default: 3)",
+                        "default": 3
+                    }
+                },
+                "required": ["query", "document_ids"]
             }
         }
     }
