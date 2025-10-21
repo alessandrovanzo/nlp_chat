@@ -1,8 +1,8 @@
 """
 FastAPI MCP Server with RAG functionality
+Routes layer - handles HTTP requests/responses only
 """
 import json
-import numpy as np
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -13,15 +13,8 @@ import logging
 import traceback
 
 from src.config import OPENAI_API_KEY, DB_PATH
-from src.database.database import get_session
-from src.database.operations import (
-    get_active_chunks_with_documents,
-    get_all_documents,
-    toggle_document_active,
-    delete_document
-)
 from src.document.processor import process_document
-from src.document.embeddings import create_embedding
+from src.server import services
 from openai import OpenAI
 
 # Configure logging
@@ -62,13 +55,6 @@ class ToolCallRequest(BaseModel):
 class ToolCallResponse(BaseModel):
     content: List[Dict[str, Any]]
     isError: bool = False
-
-
-def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
-    """Calculate cosine similarity between two vectors"""
-    vec1 = np.array(vec1)
-    vec2 = np.array(vec2)
-    return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 
 @app.get("/")
@@ -132,7 +118,7 @@ async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
     
     try:
         if request.name == "search_knowledge_base":
-            return await search_knowledge_base(
+            return await handle_search_knowledge_base(
                 query=request.arguments.get("query", ""),
                 top_k=request.arguments.get("top_k", 3)
             )
@@ -149,116 +135,38 @@ async def call_tool(request: ToolCallRequest) -> ToolCallResponse:
         )
 
 
-async def search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
-    """Search the knowledge base using vector similarity"""
-    if not query:
-        logger.warning("Empty query received")
+async def handle_search_knowledge_base(query: str, top_k: int = 3) -> ToolCallResponse:
+    """Handle search knowledge base tool call - delegates to service layer"""
+    success, message, results = services.search_knowledge_base(query, top_k)
+    
+    if not success:
         return ToolCallResponse(
-            content=[{"type": "text", "text": "Error: Query cannot be empty"}],
+            content=[{"type": "text", "text": f"Error: {message}"}],
             isError=True
         )
     
-    logger.info(f"Searching knowledge base for: '{query}' (top_k={top_k})")
-    
-    # Generate embedding for query using OpenAI
-    try:
-        query_embedding = create_embedding(query)
-        logger.info(f"Generated query embedding with dimension: {len(query_embedding)}")
-    except Exception as e:
-        logger.error(f"Failed to create OpenAI embedding: {str(e)}")
+    # No results but successful (e.g., no active documents)
+    if not results:
         return ToolCallResponse(
-            content=[{"type": "text", "text": f"Error creating embedding: {str(e)}"}],
-            isError=True
+            content=[{"type": "text", "text": message}],
+            isError=False
         )
     
-    # Search database (only active documents)
-    try:
-        with get_session() as session:
-            chunks_data = get_active_chunks_with_documents(session)
-            
-            if not chunks_data:
-                logger.warning("No active documents found in database")
-                return ToolCallResponse(
-                    content=[{"type": "text", "text": "No active documents found in the knowledge base. Please activate some sources in the upload interface."}],
-                    isError=False
-                )
-            
-            logger.info(f"Retrieved {len(chunks_data)} chunks from active documents")
-            
-            # Calculate similarities
-            results = []
-            for chunk_data in chunks_data:
-                try:
-                    # Build metadata dict for compatibility
-                    metadata = {
-                        "title": chunk_data["title"],
-                        "description": chunk_data["description"],
-                        "source_type": chunk_data["source_type"],
-                        "start_page": chunk_data["start_page"],
-                        "end_page": chunk_data["end_page"],
-                        "chunk_number": chunk_data["chunk_number"],
-                        "total_chunks": chunk_data["total_chunks"],
-                        "unit_name": chunk_data["unit_name"],
-                        "document_id": chunk_data["document_id"]
-                    }
-                    
-                    embedding = chunk_data["embedding"]
-                    
-                    # Check embedding dimensions
-                    if len(embedding) != len(query_embedding):
-                        logger.error(
-                            f"Dimension mismatch for chunk {chunk_data['chunk_id']} ('{chunk_data['title']}'): "
-                            f"query={len(query_embedding)}, chunk={len(embedding)}"
-                        )
-                        continue
-                    
-                    similarity = cosine_similarity(query_embedding, embedding)
-                    results.append({
-                        "id": chunk_data["chunk_id"],
-                        "content": chunk_data["content"],
-                        "metadata": metadata,
-                        "similarity": similarity
-                    })
-                except Exception as e:
-                    logger.error(f"Error processing chunk {chunk_data['chunk_id']}: {str(e)}")
-                    continue
-            
-            if not results:
-                error_msg = "All documents had incompatible embeddings. Database may contain mixed embedding dimensions."
-                logger.error(error_msg)
-                return ToolCallResponse(
-                    content=[{"type": "text", "text": f"Error: {error_msg}"}],
-                    isError=True
-                )
-            
-            # Sort by similarity and get top_k
-            results.sort(key=lambda x: x["similarity"], reverse=True)
-            top_results = results[:top_k]
-            
-            logger.info(f"Returning top {len(top_results)} results with similarities: {[r['similarity'] for r in top_results]}")
-            
-            # Format response with structured data
-            response_text = f"Found {len(top_results)} relevant document(s):\n\n"
-            for i, result in enumerate(top_results, 1):
-                response_text += f"{i}. [{result['metadata'].get('title', 'Untitled')}]\n"
-                response_text += f"   Relevance: {result['similarity']:.2%}\n"
-                response_text += f"   {result['content']}\n\n"
-            
-            # Add structured data as JSON for the client to parse
-            response_text += "\n---SOURCES_JSON---\n"
-            response_text += json.dumps(top_results, indent=2)
-            
-            return ToolCallResponse(
-                content=[{"type": "text", "text": response_text}],
-                isError=False
-            )
-    except Exception as e:
-        logger.error(f"Error in search_knowledge_base: {str(e)}")
-        logger.error(traceback.format_exc())
-        return ToolCallResponse(
-            content=[{"type": "text", "text": f"Error during search: {str(e)}"}],
-            isError=True
-        )
+    # Format response with structured data
+    response_text = f"{message}:\n\n"
+    for i, result in enumerate(results, 1):
+        response_text += f"{i}. [{result['metadata'].get('title', 'Untitled')}]\n"
+        response_text += f"   Relevance: {result['similarity']:.2%}\n"
+        response_text += f"   {result['content']}\n\n"
+    
+    # Add structured data as JSON for the client to parse
+    response_text += "\n---SOURCES_JSON---\n"
+    response_text += json.dumps(results, indent=2)
+    
+    return ToolCallResponse(
+        content=[{"type": "text", "text": response_text}],
+        isError=False
+    )
 
 
 @app.post("/upload-pdf")
@@ -340,30 +248,16 @@ async def upload_document(
 async def list_sources():
     """Get list of all unique sources with their status"""
     logger.info("Request received: GET /sources - Listing all sources")
-    try:
-        with get_session() as session:
-            documents = get_all_documents(session)
-            
-            sources = []
-            for doc in documents:
-                sources.append({
-                    "id": doc.id,
-                    "title": doc.title,
-                    "description": doc.description,
-                    "source_type": doc.source_type or "unknown",
-                    "chunk_count": doc.total_chunks,
-                    "active": bool(doc.active)
-                })
-            
-            logger.info(f"Returning {len(sources)} sources")
-            return {"success": True, "sources": sources}
-    except Exception as e:
-        logger.error(f"Error listing sources: {str(e)}")
-        logger.error(traceback.format_exc())
+    
+    success, message, sources = services.list_all_sources()
+    
+    if not success:
         return JSONResponse(
-            content={"success": False, "error": str(e)},
+            content={"success": False, "error": message},
             status_code=500
         )
+    
+    return {"success": True, "sources": sources}
 
 
 @app.post("/sources/toggle")
@@ -372,71 +266,49 @@ async def toggle_source(request: dict):
     title = request.get("title")
     active = request.get("active", True)
     
-    if not title:
+    logger.info(f"Request received: POST /sources/toggle - title='{title}', active={active}")
+    
+    success, message, data = services.toggle_source_active(title, active)
+    
+    if not success:
+        if "not found" in message.lower():
+            status_code = 404
+        elif "required" in message.lower():
+            status_code = 400
+        else:
+            status_code = 500
+        
         return JSONResponse(
-            content={"success": False, "error": "Title is required"},
-            status_code=400
+            content={"success": False, "error": message},
+            status_code=status_code
         )
     
-    logger.info(f"Toggling source '{title}' to active={active}")
-    
-    try:
-        with get_session() as session:
-            document = toggle_document_active(session, title, active)
-            
-            if not document:
-                return JSONResponse(
-                    content={"success": False, "error": "Source not found"},
-                    status_code=404
-                )
-            
-            session.commit()
-            logger.info(f"Updated source '{title}' (affects {document.total_chunks} chunks)")
-            
-            return {"success": True, "updated_chunks": document.total_chunks, "active": active}
-    except Exception as e:
-        logger.error(f"Error toggling source: {str(e)}")
-        logger.error(traceback.format_exc())
-        return JSONResponse(
-            content={"success": False, "error": str(e)},
-            status_code=500
-        )
+    return {"success": True, **data}
 
 
 @app.post("/sources/delete")
-async def delete_source(request: dict):
+async def delete_source_route(request: dict):
     """Delete a source document and all its chunks (CASCADE)"""
     title = request.get("title")
     
-    if not title:
+    logger.info(f"Request received: POST /sources/delete - title='{title}'")
+    
+    success, message, data = services.delete_source(title)
+    
+    if not success:
+        if "not found" in message.lower():
+            status_code = 404
+        elif "required" in message.lower():
+            status_code = 400
+        else:
+            status_code = 500
+        
         return JSONResponse(
-            content={"success": False, "error": "Title is required"},
-            status_code=400
+            content={"success": False, "error": message},
+            status_code=status_code
         )
     
-    logger.info(f"Deleting source '{title}'")
-    
-    try:
-        with get_session() as session:
-            chunk_count = delete_document(session, title)
-            
-            if chunk_count is None:
-                return JSONResponse(
-                    content={"success": False, "error": "Source not found"},
-                    status_code=404
-                )
-            
-            session.commit()
-            logger.info(f"Deleted document '{title}' and {chunk_count} chunks (CASCADE)")
-            
-            return {"success": True, "deleted_chunks": chunk_count}
-    except Exception as e:
-        logger.error(f"Error deleting source: {str(e)}")
-        logger.error(traceback.format_exc())
-        return JSONResponse(
-            content={"success": False, "error": str(e)},
-            status_code=500
-        )
+    return {"success": True, **data}
 
 
 if __name__ == "__main__":
