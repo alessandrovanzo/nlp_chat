@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Start the FastAPI MCP server
+Start the FastAPI MCP mcp_server
 """
 import subprocess
 import sys
@@ -26,10 +26,10 @@ def main():
     print("Upload Interface: http://localhost:8001/upload")
     print("="*60 + "\n")
     
-    # Start the server
+    # Start the mcp_server
     subprocess.run([
         sys.executable, "-m", "uvicorn",
-        "src.server.api:app",
+        "src.mcp_server.api:app",
         "--host", "0.0.0.0",
         "--port", "8001",
         "--reload"
