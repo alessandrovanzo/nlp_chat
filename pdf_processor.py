@@ -28,13 +28,15 @@ def get_file_type(file_path: str) -> str:
         file_path: Path to the file
         
     Returns:
-        File type ('pdf', 'epub', or 'unsupported')
+        File type ('pdf', 'epub', 'txt', or 'unsupported')
     """
     ext = os.path.splitext(file_path)[1].lower()
     if ext == '.pdf':
         return 'pdf'
     elif ext == '.epub':
         return 'epub'
+    elif ext == '.txt':
+        return 'txt'
     else:
         return 'unsupported'
 
@@ -113,6 +115,62 @@ def extract_text_from_epub(epub_file_path: str) -> List[str]:
         raise Exception(f"Error reading EPUB: {str(e)}")
     
     return chapters_text
+
+
+def extract_text_from_txt(txt_file_path: str) -> List[str]:
+    """
+    Extract text from TXT, returning a list where each element is a section's text
+    Sections are separated by double newlines (paragraph breaks)
+    
+    Args:
+        txt_file_path: Path to the TXT file
+        
+    Returns:
+        List of strings, one per section
+        
+    Raises:
+        Exception: If file cannot be read
+    """
+    sections_text = []
+    
+    try:
+        with open(txt_file_path, 'r', encoding='utf-8') as file:
+            content = file.read()
+        
+        if not content.strip():
+            raise Exception("TXT file is empty")
+        
+        # Split by double newlines to create sections (like chapters in EPUB)
+        # This treats each paragraph or section as a logical unit
+        sections = content.split('\n\n')
+        
+        for section in sections:
+            text = section.strip()
+            if text:  # Only add non-empty sections
+                sections_text.append(text)
+        
+        # If no sections were found (no double newlines), treat entire file as one section
+        if not sections_text:
+            sections_text.append(content.strip())
+                
+    except UnicodeDecodeError:
+        # Try with different encoding
+        try:
+            with open(txt_file_path, 'r', encoding='latin-1') as file:
+                content = file.read()
+            sections = content.split('\n\n')
+            for section in sections:
+                text = section.strip()
+                if text:
+                    sections_text.append(text)
+            if not sections_text:
+                sections_text.append(content.strip())
+        except Exception as e:
+            raise Exception(f"Error reading TXT file with alternative encoding: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Error reading TXT: {str(e)}")
+    
+    return sections_text
 
 
 def chunk_pages(pages: List[str], pages_per_chunk: int = 3, unit_name: str = "page") -> List[Dict[str, Any]]:
@@ -328,15 +386,18 @@ def process_document(
         file_type = get_file_type(file_path)
         
         if file_type == 'unsupported':
-            raise Exception(f"Unsupported file format. Please upload a PDF or EPUB file.")
+            raise Exception(f"Unsupported file format. Please upload a PDF, EPUB, or TXT file.")
         
         # Extract text based on file type
         if file_type == 'pdf':
             pages = extract_text_from_pdf(file_path)
             unit_name = "page"
-        else:  # epub
+        elif file_type == 'epub':
             pages = extract_text_from_epub(file_path)
             unit_name = "chapter"
+        else:  # txt
+            pages = extract_text_from_txt(file_path)
+            unit_name = "section"
         
         if not pages:
             raise Exception(f"No text extracted from {file_type.upper()}")

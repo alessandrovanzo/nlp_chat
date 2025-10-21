@@ -19,14 +19,14 @@ async def start():
     # Welcome message with instructions
     welcome_msg = """# 📄 Document Upload to Knowledge Base
 
-Welcome! This tool allows you to upload PDF and EPUB documents to the knowledge base.
+Welcome! This tool allows you to upload PDF, EPUB, and TXT documents to the knowledge base.
 
 ## Instructions:
-1. **Upload a PDF or EPUB file** using the attachment button below
+1. **Upload a PDF, EPUB, or TXT file** using the attachment button below
 2. I'll ask you for:
    - **Source Name**: A title for your document
    - **Description**: A brief description of the content
-   - **Units per Chunk**: How many pages/chapters to group together (1-10)
+   - **Units per Chunk**: How many pages/chapters/sections to group together (1-10)
 3. The document will be processed, embedded, and added to the knowledge base
 
 Ready to upload your first document? Click the attachment button (📎) to get started!
@@ -45,9 +45,9 @@ async def handle_message(message: cl.Message):
             if isinstance(element, cl.File):
                 # Check if it's a supported file type
                 filename_lower = element.name.lower()
-                if not (filename_lower.endswith('.pdf') or filename_lower.endswith('.epub')):
+                if not (filename_lower.endswith('.pdf') or filename_lower.endswith('.epub') or filename_lower.endswith('.txt')):
                     await cl.Message(
-                        content="❌ Unsupported file format. Please upload a PDF or EPUB file only."
+                        content="❌ Unsupported file format. Please upload a PDF, EPUB, or TXT file only."
                     ).send()
                     return
                 
@@ -55,7 +55,7 @@ async def handle_message(message: cl.Message):
                 file_type = get_file_type(element.path)
                 if file_type == 'unsupported':
                     await cl.Message(
-                        content="❌ Unsupported file format. Please upload a PDF or EPUB file."
+                        content="❌ Unsupported file format. Please upload a PDF, EPUB, or TXT file."
                     ).send()
                     return
                 
@@ -98,7 +98,12 @@ async def handle_message(message: cl.Message):
         cl.user_session.set("step", "awaiting_pages_per_chunk")
         
         file_type = cl.user_session.get("file_type", "pdf")
-        unit_name = "chapters" if file_type == "epub" else "pages"
+        if file_type == "epub":
+            unit_name = "chapters"
+        elif file_type == "txt":
+            unit_name = "sections"
+        else:
+            unit_name = "pages"
         
         await cl.Message(
             content=f"✅ Description set!\n\nFinally, how many **{unit_name} per chunk** would you like? (Enter a number between 1 and 10, default is 3):"
@@ -123,7 +128,7 @@ async def handle_message(message: cl.Message):
     else:
         # No active flow, provide help
         await cl.Message(
-            content="Please upload a PDF or EPUB file using the attachment button (📎) to begin."
+            content="Please upload a PDF, EPUB, or TXT file using the attachment button (📎) to begin."
         ).send()
 
 
@@ -137,7 +142,12 @@ async def process_and_store_pdf():
     file_type = cl.user_session.get("file_type", "pdf")
     
     file_type_display = file_type.upper()
-    unit_name = "chapters" if file_type == "epub" else "pages"
+    if file_type == "epub":
+        unit_name = "chapters"
+    elif file_type == "txt":
+        unit_name = "sections"
+    else:
+        unit_name = "pages"
     
     # Show processing message
     processing_msg = await cl.Message(

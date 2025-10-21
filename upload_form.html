@@ -400,15 +400,15 @@
 <body>
     <div class="container">
         <h1>Document Upload</h1>
-        <p class="subtitle">Add PDFs and EPUBs to your knowledge base</p>
+        <p class="subtitle">Add PDFs, EPUBs, and TXT files to your knowledge base</p>
         
         <form id="uploadForm">
             <div class="form-group">
-                <label for="pdfFile">Document (PDF or EPUB) *</label>
+                <label for="pdfFile">Document (PDF, EPUB, or TXT) *</label>
                 <div class="file-upload" id="fileUpload">
-                    <input type="file" id="pdfFile" name="pdfFile" accept=".pdf,.epub" required>
+                    <input type="file" id="pdfFile" name="pdfFile" accept=".pdf,.epub,.txt" required>
                     <div class="file-icon">📄</div>
-                    <div class="file-text">Click to browse or drag & drop your PDF or EPUB here</div>
+                    <div class="file-text">Click to browse or drag & drop your PDF, EPUB, or TXT file here</div>
                     <div class="file-name" id="fileName"></div>
                 </div>
             </div>
@@ -504,15 +504,15 @@
             
             if (e.dataTransfer.files.length > 0) {
                 const file = e.dataTransfer.files[0];
-                const validTypes = ['application/pdf', 'application/epub+zip'];
-                const validExtensions = ['.pdf', '.epub'];
+                const validTypes = ['application/pdf', 'application/epub+zip', 'text/plain'];
+                const validExtensions = ['.pdf', '.epub', '.txt'];
                 const fileExt = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
                 
                 if (validTypes.includes(file.type) || validExtensions.includes(fileExt)) {
                     fileInput.files = e.dataTransfer.files;
                     fileName.textContent = file.name;
                 } else {
-                    alert('Please upload a PDF or EPUB file');
+                    alert('Please upload a PDF, EPUB, or TXT file');
                 }
             }
         });
