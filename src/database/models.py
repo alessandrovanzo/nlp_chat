@@ -27,7 +27,7 @@ class Document(Base):
     # Relationship to chunks (with cascade delete)
     chunks: Mapped[List["Chunk"]] = relationship(
         "Chunk",
-        back_populates="document_processing",
+        back_populates="document",
         cascade="all, delete-orphan"
     )
     
