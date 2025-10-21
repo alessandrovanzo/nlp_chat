@@ -136,19 +136,9 @@ async def handle_get_available_sources() -> ToolCallResponse:
             isError=False
         )
     
-    # Format response with structured data
-    response_text = f"{message}:\n\n"
-    for source in sources:
-        response_text += f"Document ID: {source['document_id']}\n"
-        response_text += f"Title: {source['title']}\n"
-        response_text += f"Description: {source['description']}\n"
-        response_text += f"Type: {source['source_type']}\n"
-        response_text += f"Total Chunks: {source['total_chunks']}\n"
-        response_text += f"Active: {'Yes' if source['active'] else 'No'}\n"
-        response_text += "-" * 50 + "\n\n"
-    
-    # Add structured data as JSON for easy parsing
-    response_text += "\n---SOURCES_JSON---\n"
+    # Return brief message with JSON data for LLM to parse
+    response_text = f"Retrieved {len(sources)} document(s) from the knowledge base.\n\n"
+    response_text += "---SOURCES_JSON---\n"
     response_text += json.dumps(sources, indent=2)
     
     return ToolCallResponse(

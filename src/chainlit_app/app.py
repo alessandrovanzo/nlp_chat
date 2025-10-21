@@ -78,27 +78,38 @@ async def main(message: cl.Message):
             function_name = tool_call.function.name
             function_args = json.loads(tool_call.function.arguments)
             
-            # Show user that we're searching
-            await cl.Message(
-                content=f"🔍 Searching knowledge base for: {function_args.get('query', 'information')}..."
-            ).send()
+            # Show user that we're querying (only for search tools)
+            if function_name == "search_knowledge_base":
+                await cl.Message(
+                    content=f"🔍 Searching knowledge base for: {function_args.get('query', 'information')}..."
+                ).send()
+            elif function_name == "search_specific_documents":
+                await cl.Message(
+                    content=f"🔍 Searching specific documents for: {function_args.get('query', 'information')}..."
+                ).send()
+            elif function_name == "get_available_sources":
+                await cl.Message(
+                    content="📚 Checking available documents in knowledge base..."
+                ).send()
             
             # Call the MCP tool
             function_response = await call_mcp_tool(function_name, function_args)
             
-            # Parse sources from response and create display elements
-            text_part, sources = parse_sources_from_response(function_response)
-            
-            if sources:
-                # Create source elements for sidebar
-                sources_elements.extend(create_source_elements(sources))
+            # Only show sources UI for search tools, not for get_available_sources
+            if function_name in ["search_knowledge_base", "search_specific_documents"]:
+                # Parse sources from response and create display elements
+                text_part, sources = parse_sources_from_response(function_response)
                 
-                # Display sources with previews
-                sources_text = format_sources_message(sources)
-                await cl.Message(
-                    content=sources_text,
-                    elements=sources_elements
-                ).send()
+                if sources:
+                    # Create source elements for sidebar
+                    sources_elements.extend(create_source_elements(sources))
+                    
+                    # Display sources with previews
+                    sources_text = format_sources_message(sources)
+                    await cl.Message(
+                        content=sources_text,
+                        elements=sources_elements
+                    ).send()
             
             # Add tool response to messages
             messages.append({
